@@ -154,13 +154,44 @@ function LoginForm() {
         <Alert variant={familyLinkBlocked ? "destructive" : "default"}>
           <AlertTitle>
             {familyLinkBlocked
-              ? "Google blocked your Family Link account"
-              : "Using a Family Link Google account?"}
+              ? "Google hard-blocked Family Link (not a ScholarReach bug)"
+              : "Family Link / supervised Google account?"}
           </AlertTitle>
-          <AlertDescription>
-            {familyLinkBlocked
-              ? "That's Google's restriction on supervised accounts for many new apps. Sign in with email + password below — it works with the same Gmail address."
-              : "Skip Continue with Google. Use email + password (same Gmail is fine). Google often blocks supervised accounts on unverified apps."}
+          <AlertDescription className="flex flex-col gap-2">
+            <span>
+              Google decides whether to show <strong>parent approval</strong> or
+              the &quot;not allowed to sign in here&quot; wall. We cannot draw a
+              parent-picker ourselves — that screen is Google&apos;s.
+            </span>
+            <span>
+              To unlock parent approval (same as other apps), a parent must:
+            </span>
+            <ol className="list-decimal space-y-1 pl-5 text-sm">
+              <li>
+                Open{" "}
+                <a
+                  className="underline"
+                  href="https://g.co/yourfamily"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  g.co/yourfamily
+                </a>{" "}
+                or the Family Link app → your account
+              </li>
+              <li>
+                <strong>Controls → Account settings → Controls for third-party
+                apps</strong> → allow third-party access (not blocked)
+              </li>
+              <li>
+                Retry Google. Google should then ask the parent to approve (password
+                / Family Link notification) — not show the hard block.
+              </li>
+            </ol>
+            <span>
+              Until that works, sign in with <strong>email + password</strong>{" "}
+              below (same Gmail address). That always works.
+            </span>
           </AlertDescription>
         </Alert>
 
