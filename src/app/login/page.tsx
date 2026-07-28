@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Mail, Sparkles, ArrowRight, ShieldCheck } from "lucide-react";
+import { Mail, ArrowRight, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -23,6 +23,22 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { LIVE_APP_URL } from "@/lib/live-app";
 
+async function routeAfterAuth(router: ReturnType<typeof useRouter>) {
+  try {
+    const res = await fetch("/api/profile");
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.user?.onboardingComplete) {
+        router.push("/onboarding");
+        return;
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  router.push("/dashboard");
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { isStatic } = useAuth();
@@ -32,10 +48,6 @@ export default function LoginPage() {
   const [busy, setBusy] = useState<"free" | "gmail" | null>(null);
   const staticMode =
     isStatic || process.env.NEXT_PUBLIC_STATIC_EXPORT === "true";
-
-  function goDashboard() {
-    router.push("/dashboard");
-  }
 
   async function workspaceSignIn() {
     const { signIn } = await import("next-auth/react");
@@ -51,11 +63,6 @@ export default function LoginPage() {
         "Sign-in failed. New workspaces are free — if this email already has private data, enter your workspace access code."
       );
     }
-    if (result?.url) {
-      window.location.href = result.url;
-      return;
-    }
-    goDashboard();
   }
 
   async function onContinueFree() {
@@ -71,6 +78,7 @@ export default function LoginPage() {
       }
       await workspaceSignIn();
       toast.success("Signed in");
+      await routeAfterAuth(router);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign-in failed");
     } finally {
@@ -85,7 +93,6 @@ export default function LoginPage() {
         window.location.href = `${LIVE_APP_URL}/login`;
         return;
       }
-
       if (!email.trim() || !email.includes("@")) {
         toast.error("Enter the Gmail address you want to connect");
         return;
@@ -97,23 +104,21 @@ export default function LoginPage() {
       const providers = await getProviders();
       if (!providers?.google) {
         toast.message(
-          "Workspace ready. Add Google OAuth keys to enable Connect Gmail."
+          "Workspace ready. Finish onboarding, then add Google OAuth for Connect Gmail."
         );
-        goDashboard();
+        await routeAfterAuth(router);
         return;
       }
 
       const result = await signIn("google", {
-        callbackUrl: "/dashboard",
+        callbackUrl: "/onboarding",
         redirect: false,
       });
       if (result?.url) {
         window.location.href = result.url;
         return;
       }
-
-      toast.message("Workspace signed in");
-      goDashboard();
+      await routeAfterAuth(router);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Auth failed");
     } finally {
@@ -122,22 +127,21 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center px-4 py-12">
-      <div className="pointer-events-none absolute inset-0 desk-grid opacity-40" />
-      <Card className="relative z-10 w-full max-w-md">
+    <main className="flex min-h-screen items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-md">
         <CardHeader>
           <Link href="/" className="mb-2 flex items-center gap-2 font-semibold">
-            <span className="wax-seal flex size-9 items-center justify-center rounded-xl text-primary-foreground">
-              <Sparkles className="size-4" />
+            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
+              SR
             </span>
-            <span className="font-display">ScholarReach AI</span>
+            <span className="font-display">ScholarReach</span>
           </Link>
           <CardTitle className="font-display text-2xl">
             Open your free workspace
           </CardTitle>
           <CardDescription>
-            Create a private student account in seconds. Your faculty leads,
-            drafts, and send history stay isolated to your workspace.
+            New accounts start with onboarding (CV, interview, regions). Returning
+            accounts with data need an access code.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -145,7 +149,7 @@ export default function LoginPage() {
             <Alert>
               <AlertTitle>Marketing demo</AlertTitle>
               <AlertDescription>
-                This GitHub Pages preview is sample-only.{" "}
+                Sample-only on GitHub Pages.{" "}
                 <a
                   href={LIVE_APP_URL}
                   className="font-medium text-primary underline-offset-4 hover:underline"
@@ -153,8 +157,8 @@ export default function LoginPage() {
                   rel="noopener noreferrer"
                 >
                   Open the live app
-                </a>{" "}
-                for your private account.
+                </a>
+                .
               </AlertDescription>
             </Alert>
           )}
@@ -163,8 +167,8 @@ export default function LoginPage() {
             <ShieldCheck className="size-4" />
             <AlertTitle>Private by default</AlertTitle>
             <AlertDescription>
-              Existing workspaces with outreach data require an access code.
-              Brand-new student accounts are free — no credit card.
+              Your CV, interview answers, and outreach queue stay inside your
+              workspace.
             </AlertDescription>
           </Alert>
 
@@ -234,18 +238,21 @@ export default function LoginPage() {
 
           <Separator />
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Free forever for students on the Hobby stack (Vercel + Neon).
-            Production sending uses Google OAuth with{" "}
-            <code className="text-primary">gmail.send</code> — never app
-            passwords. See{" "}
-            <Link href="/privacy" className="text-primary underline-offset-4 hover:underline">
+            Free forever on Vercel Hobby + Neon. See{" "}
+            <Link
+              href="/privacy"
+              className="text-primary underline-offset-4 hover:underline"
+            >
               Privacy
             </Link>
             .
           </p>
         </CardContent>
         <CardFooter className="justify-center text-xs text-muted-foreground">
-          <Link href="/" className={cn(buttonVariants({ variant: "link", size: "xs" }))}>
+          <Link
+            href="/"
+            className={cn(buttonVariants({ variant: "link", size: "xs" }))}
+          >
             Back to home
           </Link>
         </CardFooter>

@@ -8,12 +8,11 @@ import {
   Users,
   CheckSquare,
   ListOrdered,
-  Sparkles,
+  UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { getDemoSession, type DemoSession } from "@/lib/demo-auth";
 
 const links = [
@@ -21,6 +20,7 @@ const links = [
   { href: "/directory", label: "Directory", icon: Users },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/queue", label: "Queue", icon: ListOrdered },
+  { href: "/onboarding", label: "Profile", icon: UserRound },
 ];
 
 export function AppNav({
@@ -41,19 +41,17 @@ export function AppNav({
     return () => window.removeEventListener("scholarreach-auth", sync);
   }, []);
 
-  const displayEmail = session?.email || email || "student@university.edu";
+  const displayEmail = session?.email || email || "";
   const connected = session?.gmailConnected ?? !!gmailConnected;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="wax-seal flex size-8 items-center justify-center rounded-lg text-primary-foreground">
-            <Sparkles className="size-3.5" />
+          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
+            SR
           </span>
-          <span className="font-display text-lg">
-            ScholarReach <span className="text-primary">AI</span>
-          </span>
+          <span className="font-display text-lg">ScholarReach</span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
@@ -78,12 +76,14 @@ export function AppNav({
         </nav>
 
         <div className="flex items-center gap-3">
-          <Badge
-            variant={connected ? "secondary" : "outline"}
-            className="hidden max-w-[240px] truncate sm:inline-flex"
-          >
-            {connected ? `Gmail · ${displayEmail}` : "Gmail not connected"}
-          </Badge>
+          {displayEmail && (
+            <Badge
+              variant={connected ? "secondary" : "outline"}
+              className="hidden max-w-[220px] truncate sm:inline-flex"
+            >
+              {connected ? `Gmail · ${displayEmail}` : displayEmail}
+            </Badge>
+          )}
           <button
             type="button"
             onClick={() => router.push("/login")}
@@ -94,8 +94,7 @@ export function AppNav({
         </div>
       </div>
 
-      <Separator />
-      <nav className="flex gap-1 overflow-x-auto px-4 py-2 md:hidden">
+      <nav className="flex gap-1 overflow-x-auto border-t border-border px-4 py-2 md:hidden">
         {links.map(({ href, label }) => (
           <Link
             key={href}

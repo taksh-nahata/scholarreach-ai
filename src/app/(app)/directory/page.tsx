@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Pickaxe } from "lucide-react";
+import { Search, Pickaxe, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { parseJsonArray } from "@/lib/utils";
 import { getDemoBundle } from "@/lib/demo";
@@ -45,6 +45,7 @@ export default function DirectoryPage() {
   const [university, setUniversity] = useState("");
   const [loading, setLoading] = useState(true);
   const [mining, setMining] = useState(false);
+  const [drafting, setDrafting] = useState(false);
 
   async function load(nextQ = q, nextUniversity = university) {
     setLoading(true);
@@ -107,6 +108,35 @@ export default function DirectoryPage() {
     }
   }
 
+  async function draftForVisible() {
+    const ids = professors
+      .filter((p) => !p.drafts?.length)
+      .slice(0, 10)
+      .map((p) => p.id);
+    if (!ids.length) {
+      toast.message("Visible leads already have pending drafts");
+      return;
+    }
+    setDrafting(true);
+    try {
+      const res = await fetch("/api/drafts/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ professorIds: ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Draft generation failed");
+      toast.success(`Created ${data.count || 0} personalized drafts`);
+      await load();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Draft generation failed"
+      );
+    } finally {
+      setDrafting(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -115,13 +145,31 @@ export default function DirectoryPage() {
             Faculty Directory
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Searchable R1 / global professors mined for outreach
+            Search leads, then generate drafts using your onboarding profile
           </p>
         </div>
-        <Button onClick={mine} disabled={mining}>
-          {mining ? <Spinner data-icon="inline-start" /> : <Pickaxe data-icon="inline-start" />}
-          Mine 20 Fresh Leads
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={draftForVisible}
+            disabled={drafting || loading}
+          >
+            {drafting ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <Mail data-icon="inline-start" />
+            )}
+            Draft emails (profile-aware)
+          </Button>
+          <Button onClick={mine} disabled={mining}>
+            {mining ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <Pickaxe data-icon="inline-start" />
+            )}
+            Mine 20 Fresh Leads
+          </Button>
+        </div>
       </div>
 
       <FieldGroup className="flex flex-col gap-3 sm:flex-row sm:items-end">

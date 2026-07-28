@@ -1,6 +1,6 @@
 import { AppNav } from "@/app/components/AppNav";
+import { OnboardingGate } from "@/components/OnboardingGate";
 
-// Live app must be dynamic for NextAuth sessions. Static export still works via Pages build.
 export const dynamic =
   process.env.NEXT_PUBLIC_STATIC_EXPORT === "true" ? "force-static" : "force-dynamic";
 
@@ -10,9 +10,11 @@ export default function AppShellLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       <AppNav />
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">{children}</div>
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <OnboardingGate>{children}</OnboardingGate>
+      </div>
     </div>
   );
 }

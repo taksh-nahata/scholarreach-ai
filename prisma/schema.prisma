@@ -18,6 +18,7 @@ model User {
   gmailConnected     Boolean  @default(false)
   dailySentCount     Int      @default(0)
   lastSendResetDate  String?
+  onboardingComplete Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -27,6 +28,57 @@ model User {
   sentHistory     SentHistory[]
   accounts        Account[]
   sessions        Session[]
+  profile         StudentProfile?
+}
+
+/// Per-user researcher identity used for personalized outreach
+model StudentProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Basics
+  displayName   String?
+  headline      String? // e.g. "HS dual-enrollment student · robotics + CV"
+  phone         String?
+  location      String?
+  school        String?
+  gradeOrYear   String?
+  githubUrl     String?
+  linkedinUrl   String?
+  personalSite  String?
+
+  // Structured JSON blobs
+  educationJson     String? // [{school, degree, years, gpa, coursework[]}]
+  achievementsJson  String? // [{title, detail, year?}]
+  projectsJson      String? // [{name, role, details}]
+  skillsJson        String? // {languages[], frameworks[], expertise[]}
+  writingSamplesJson String? // past email snippets or notes on tone
+
+  // Preferences
+  writingStyleNotes String? // how they want to sound
+  tonePreference    String? @default("warm_professional") // warm_professional | concise | formal
+  targetRegionsJson String? // ["us_west","europe",...]
+  workModePref      String? @default("remote") // remote | hybrid | in_person | flexible
+  researchInterests String?
+  availabilityNotes String?
+
+  // CV / resume
+  cvFileName    String?
+  cvMimeType    String?
+  cvText        String? // extracted plain text
+  cvUploadedAt  DateTime?
+
+  // Onboarding interview
+  interviewJson     String? // [{role, content, at}]
+  interviewComplete Boolean @default(false)
+  onboardingStep    String  @default("welcome") // welcome|cv|interview|regions|style|review|done
+
+  // Compiled brief for email prompts
+  profileBrief String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Account {
