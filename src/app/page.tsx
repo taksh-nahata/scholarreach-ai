@@ -24,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { appHref, isStaticExport, LIVE_APP_URL } from "@/lib/live-app";
 import { cn } from "@/lib/utils";
 
 const features = [
@@ -103,6 +104,9 @@ const faqs = [
 
 export default function LandingPage() {
   const reduce = useReducedMotion();
+  const staticDemo = isStaticExport();
+  const primaryCtaHref = staticDemo ? LIVE_APP_URL : appHref("/login");
+  const primaryCtaLabel = staticDemo ? "Open the live app" : "Get Started Free";
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -119,13 +123,17 @@ export default function LandingPage() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/dashboard"
+            href={staticDemo ? `${LIVE_APP_URL}/dashboard` : "/dashboard"}
             className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
           >
             Product
           </Link>
-          <Link href="/login" className={cn(buttonVariants({ size: "sm" }))}>
-            Get Started Free
+          <Link
+            href={primaryCtaHref}
+            className={cn(buttonVariants({ size: "sm" }))}
+            {...(staticDemo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+          >
+            {primaryCtaLabel}
           </Link>
         </div>
       </header>
@@ -159,8 +167,12 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.16 }}
           >
-            <Link href="/login" className={cn(buttonVariants({ size: "lg" }))}>
-              Start free workspace
+            <Link
+              href={primaryCtaHref}
+              className={cn(buttonVariants({ size: "lg" }))}
+              {...(staticDemo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            >
+              {staticDemo ? "Open the live app" : "Start free workspace"}
               <ArrowRight data-icon="inline-end" />
             </Link>
             <Link
@@ -318,8 +330,12 @@ export default function LandingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/login" className={cn(buttonVariants({ size: "lg" }))}>
-              Get Started Free
+            <Link
+              href={primaryCtaHref}
+              className={cn(buttonVariants({ size: "lg" }))}
+              {...(staticDemo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            >
+              {primaryCtaLabel}
               <ArrowRight data-icon="inline-end" />
             </Link>
           </CardContent>

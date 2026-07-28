@@ -21,26 +21,49 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { LIVE_APP_URL } from "@/lib/live-app";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signInFree, connectGmail, isStatic } = useAuth();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const { isStatic } = useAuth();
+  const [name, setName] = useState("Taksh Nahata");
+  const [email, setEmail] = useState("taksh.nahata37@gmail.com");
   const [busy, setBusy] = useState<"free" | "gmail" | null>(null);
   const staticMode =
     isStatic || process.env.NEXT_PUBLIC_STATIC_EXPORT === "true";
 
   function goDashboard() {
-    router.push("/dashboard/");
+    router.push("/dashboard");
+  }
+
+  async function workspaceSignIn() {
+    const { signIn } = await import("next-auth/react");
+    const result = await signIn("workspace-login", {
+      email: email.trim().toLowerCase(),
+      name: name.trim() || "Student Researcher",
+      redirect: false,
+      callbackUrl: "/dashboard",
+    });
+    if (result?.error) throw new Error(result.error);
+    if (result?.url) {
+      window.location.href = result.url;
+      return;
+    }
+    goDashboard();
   }
 
   async function onContinueFree() {
     setBusy("free");
     try {
-      signInFree({ name, email });
-      toast.success("Workspace ready");
-      goDashboard();
+      if (staticMode) {
+        // Prefer the real hosted account over browser-only demo auth
+        window.location.href = `${LIVE_APP_URL}/login`;
+        return;
+      }
+      await workspaceSignIn();
+      toast.success("Signed in");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Sign-in failed");
     } finally {
       setBusy(null);
     }
@@ -49,38 +72,42 @@ export default function LoginPage() {
   async function onConnectGmail() {
     setBusy("gmail");
     try {
+      if (staticMode) {
+        window.location.href = `${LIVE_APP_URL}/login`;
+        return;
+      }
+
       if (!email.trim() || !email.includes("@")) {
         toast.error("Enter the Gmail address you want to connect");
         return;
       }
 
-      if (staticMode) {
-        signInFree({ name, email });
-        connectGmail(email.trim());
-        toast.success("Gmail connected for this demo workspace");
+      // Ensure workspace user exists first
+      await workspaceSignIn();
+
+      const { signIn, getProviders } = await import("next-auth/react");
+      const providers = await getProviders();
+      if (!providers?.google) {
+        toast.message(
+          "Google OAuth keys not set yet — signed into workspace. Add GOOGLE_CLIENT_ID/SECRET on Vercel to enable Connect Gmail."
+        );
         goDashboard();
         return;
       }
 
-      try {
-        const { signIn } = await import("next-auth/react");
-        const result = await signIn("google", {
-          callbackUrl: "/dashboard",
-          redirect: false,
-        });
-        if (result?.url) {
-          window.location.href = result.url;
-          return;
-        }
-      } catch {
-        // fall through
+      const result = await signIn("google", {
+        callbackUrl: "/dashboard",
+        redirect: false,
+      });
+      if (result?.url) {
+        window.location.href = result.url;
+        return;
       }
 
-      connectGmail(email.trim());
-      signInFree({ name, email });
-      connectGmail(email.trim());
-      toast.success("Connected in demo mode — add Google OAuth keys for live send");
+      toast.message("Google OAuth not configured yet — workspace signed in");
       goDashboard();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Auth failed");
     } finally {
       setBusy(null);
     }
@@ -98,21 +125,29 @@ export default function LoginPage() {
             <span className="font-display">ScholarReach AI</span>
           </Link>
           <CardTitle className="font-display text-2xl">
-            Create your free workspace
+            Sign in to your workspace
           </CardTitle>
           <CardDescription>
-            Start mining faculty leads and reviewing AI drafts in under a minute.
-            Connect Gmail when you&apos;re ready to send during the academic window.
+            Access your faculty leads, draft approvals, and academic-window queue.
+            Connect Gmail when you&apos;re ready to send.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           {staticMode && (
             <Alert>
-              <AlertTitle>Product demo</AlertTitle>
+              <AlertTitle>Marketing demo</AlertTitle>
               <AlertDescription>
-                You&apos;re on the public GitHub Pages preview. Auth is stored in
-                your browser so the product flow stays smooth — live Google OAuth
-                requires a hosted backend.
+                This GitHub Pages preview is sample-only.{" "}
+                <a
+                  href={LIVE_APP_URL}
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open the live app
+                </a>{" "}
+                to use your real account ({" "}
+                <code className="text-xs">taksh.nahata37@gmail.com</code>).
               </AlertDescription>
             </Alert>
           )}
@@ -164,24 +199,20 @@ export default function LoginPage() {
               ) : (
                 <ArrowRight data-icon="inline-start" />
               )}
-              Continue without Gmail
+              Sign in without Gmail
             </Button>
           </div>
 
           <Separator />
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Free for high school and college students. No app passwords. Production
-            sending uses official Google OAuth with{" "}
-            <code className="text-primary">gmail.send</code> only.
+            Free for high school and college students. Production sending uses
+            official Google OAuth with <code className="text-primary">gmail.send</code>{" "}
+            only — never app passwords.
           </p>
         </CardContent>
         <CardFooter className="justify-center text-xs text-muted-foreground">
-          Already exploring?{" "}
-          <Link
-            href="/dashboard"
-            className={cn(buttonVariants({ variant: "link", size: "xs" }))}
-          >
-            Open dashboard
+          <Link href="/" className={cn(buttonVariants({ variant: "link", size: "xs" }))}>
+            Back to home
           </Link>
         </CardFooter>
       </Card>

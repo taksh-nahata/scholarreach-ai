@@ -22,23 +22,48 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
     CredentialsProvider({
+      id: "workspace-login",
+      name: "Workspace Login",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        name: { label: "Name", type: "text" },
+      },
+      async authorize(credentials) {
+        const email = (credentials?.email || "").trim().toLowerCase();
+        if (!email || !email.includes("@")) return null;
+        const name =
+          (credentials?.name || "").trim() ||
+          process.env.DEFAULT_USER_NAME ||
+          "Student Researcher";
+        const user = await prisma.user.upsert({
+          where: { email },
+          update: { name },
+          create: { email, name },
+        });
+        return { id: user.id, email: user.email, name: user.name };
+      },
+    }),
+    // Keep legacy id for older clients
+    CredentialsProvider({
       id: "dev-login",
       name: "Dev Login",
       credentials: {
         email: { label: "Email", type: "email" },
+        name: { label: "Name", type: "text" },
       },
       async authorize(credentials) {
         const email =
-          credentials?.email ||
+          (credentials?.email || "").trim().toLowerCase() ||
           process.env.DEFAULT_USER_EMAIL ||
-          "takshnahata37@gmail.com";
+          "taksh.nahata37@gmail.com";
+        const name =
+          (credentials?.name || "").trim() ||
+          process.env.DEFAULT_USER_NAME ||
+          "Taksh Nahata";
         const user = await prisma.user.upsert({
           where: { email },
-          update: {},
-          create: {
-            email,
-            name: process.env.DEFAULT_USER_NAME || "Taksh Nahata",
-          },
+          update: { name },
+          create: { email, name },
         });
         return { id: user.id, email: user.email, name: user.name };
       },

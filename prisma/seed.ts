@@ -11,7 +11,7 @@ import { normalizeDedupeKey, toJsonArray } from "../src/lib/utils";
 const prisma = new PrismaClient();
 
 const DATA_DIR = path.resolve(__dirname, "../../data");
-const DEFAULT_EMAIL = process.env.DEFAULT_USER_EMAIL || "takshnahata37@gmail.com";
+const DEFAULT_EMAIL = process.env.DEFAULT_USER_EMAIL || "taksh.nahata37@gmail.com";
 const DEFAULT_NAME = process.env.DEFAULT_USER_NAME || "Taksh Nahata";
 
 type DirProf = {

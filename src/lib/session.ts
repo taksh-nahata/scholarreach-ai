@@ -11,14 +11,18 @@ export async function requireUser() {
     if (user) return user;
   }
 
-  // Dev fallback: default seeded account so UI works before OAuth is configured
-  const email = process.env.DEFAULT_USER_EMAIL || "takshnahata37@gmail.com";
-  return prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: {
-      email,
-      name: process.env.DEFAULT_USER_NAME || "Taksh Nahata",
-    },
-  });
+  // Production: require a real session. Dev fallback only when ALLOW_DEFAULT_USER=true
+  if (process.env.ALLOW_DEFAULT_USER === "true" || process.env.NODE_ENV !== "production") {
+    const email = process.env.DEFAULT_USER_EMAIL || "taksh.nahata37@gmail.com";
+    return prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: {
+        email,
+        name: process.env.DEFAULT_USER_NAME || "Taksh Nahata",
+      },
+    });
+  }
+
+  throw new Error("Unauthorized");
 }

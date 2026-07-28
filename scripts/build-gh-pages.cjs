@@ -25,6 +25,8 @@ try {
   process.env.STATIC_EXPORT = "true";
   process.env.NEXT_PUBLIC_STATIC_EXPORT = "true";
   process.env.BASE_PATH = process.env.BASE_PATH || "/scholarreach-ai";
+  process.env.NEXT_PUBLIC_LIVE_APP_URL =
+    process.env.NEXT_PUBLIC_LIVE_APP_URL || "https://scholarreach-ai.vercel.app";
 
   try {
     if (fs.existsSync(path.join(root, "prisma", "dev.db"))) {

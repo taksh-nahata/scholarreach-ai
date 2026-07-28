@@ -20,7 +20,10 @@ export function createOAuthClient() {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID || "",
     process.env.GOOGLE_CLIENT_SECRET || "",
-    process.env.GOOGLE_REDIRECT_URI || "http://localhost:3001/api/auth/callback/google"
+    process.env.GOOGLE_REDIRECT_URI ||
+      (process.env.NEXTAUTH_URL
+        ? `${process.env.NEXTAUTH_URL.replace(/\/$/, "")}/api/auth/callback/google`
+        : "http://localhost:3001/api/auth/callback/google")
   );
 }
 
