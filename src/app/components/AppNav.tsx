@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { getDemoSession, type DemoSession } from "@/lib/demo-auth";
 
 const links = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -29,6 +31,18 @@ export function AppNav({
   gmailConnected?: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [session, setSession] = useState<DemoSession | null>(null);
+
+  useEffect(() => {
+    const sync = () => setSession(getDemoSession());
+    sync();
+    window.addEventListener("scholarreach-auth", sync);
+    return () => window.removeEventListener("scholarreach-auth", sync);
+  }, []);
+
+  const displayEmail = session?.email || email || "student@university.edu";
+  const connected = session?.gmailConnected ?? !!gmailConnected;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -44,7 +58,7 @@ export function AppNav({
 
         <nav className="hidden items-center gap-1 md:flex">
           {links.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href;
+            const active = pathname === href || pathname?.startsWith(`${href}/`);
             return (
               <Link
                 key={href}
@@ -65,14 +79,18 @@ export function AppNav({
 
         <div className="flex items-center gap-3">
           <Badge
-            variant={gmailConnected ? "secondary" : "outline"}
+            variant={connected ? "secondary" : "outline"}
             className="hidden max-w-[240px] truncate sm:inline-flex"
           >
-            {gmailConnected ? `Connected · ${email}` : "Gmail offline"}
+            {connected ? `Gmail · ${displayEmail}` : "Gmail not connected"}
           </Badge>
-          <Link href="/login" className={cn(buttonVariants({ size: "sm" }))}>
+          <button
+            type="button"
+            onClick={() => router.push("/login")}
+            className={cn(buttonVariants({ size: "sm" }))}
+          >
             Account
-          </Link>
+          </button>
         </div>
       </div>
 

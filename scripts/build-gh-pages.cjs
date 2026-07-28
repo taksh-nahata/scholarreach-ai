@@ -23,11 +23,18 @@ try {
   }
 
   process.env.STATIC_EXPORT = "true";
+  process.env.NEXT_PUBLIC_STATIC_EXPORT = "true";
   process.env.BASE_PATH = process.env.BASE_PATH || "/scholarreach-ai";
 
   try {
     if (fs.existsSync(path.join(root, "prisma", "dev.db"))) {
-      run("npx tsx scripts/export-demo-data.ts");
+      // Keep committed commercial demo snapshot for GH Pages.
+      // Local DB export is opt-in: DEMO_EXPORT_FROM_DB=1
+      if (process.env.DEMO_EXPORT_FROM_DB === "1") {
+        run("npx tsx scripts/export-demo-data.ts");
+      } else {
+        console.log("Using committed public/demo-data.json (commercial sample)");
+      }
     } else {
       console.log("No local DB — using committed public/demo-data.json");
     }

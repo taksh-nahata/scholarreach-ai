@@ -102,10 +102,10 @@ export function AcademicWindowSeal() {
             animate={reduce ? undefined : { y: open ? -8 : 10, opacity: open ? 1 : 0.85 }}
             transition={{ duration: 0.6 }}
           >
-            <div className="mb-1 font-semibold">Dear Dr. Majumdar,</div>
-            Your recent work on safety-aware learning deeply resonates with my
-            embedded systems background…
-            <div className="mt-2 text-right italic">— Taksh Nahata</div>
+            <div className="mb-1 font-semibold">Dear Dr. Chen,</div>
+            Your recent work on safety-aware robotic learning aligns with my
+            research interests in embedded perception…
+            <div className="mt-2 text-right italic">— A. Rivera</div>
           </motion.div>
 
           {/* Wax seal */}

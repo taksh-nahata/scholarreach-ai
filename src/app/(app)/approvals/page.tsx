@@ -128,12 +128,12 @@ export default function ApprovalsPage() {
         </p>
       </div>
 
-      {offline && (
+          {offline && (
         <Alert>
-          <AlertTitle>Static demo mode</AlertTitle>
+          <AlertTitle>Sample workspace data</AlertTitle>
           <AlertDescription>
-            Approvals update locally for this GitHub Pages preview. Connect the
-            live API for queue sync.
+            You&apos;re viewing commercial sample drafts for the public demo.
+            Approvals update locally in this browser session.
           </AlertDescription>
         </Alert>
       )}

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Users, Clock, Send, Inbox, ArrowRight } from "lucide-react";
 import {
   Card,
@@ -10,72 +13,64 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { getDemoBundle } from "@/lib/demo";
+import { getDemoSession } from "@/lib/demo-auth";
 
-export const dynamic = "force-static";
+type DashData = ReturnType<typeof getDemoBundle>;
 
-async function loadMetrics() {
-  if (process.env.STATIC_EXPORT === "true") {
-    return getDemoBundle();
-  }
-  try {
-    const { requireUser } = await import("@/lib/session");
-    const { prisma } = await import("@/lib/prisma");
-    const user = await requireUser();
-    const [professors, draftsPending, scheduled, sent, recentScheduled] =
-      await Promise.all([
-        prisma.professor.count({ where: { userId: user.id } }),
-        prisma.draft.count({
-          where: {
-            userId: user.id,
-            status: { in: ["pending", "pending_review"] },
+export default function DashboardPage() {
+  const [data, setData] = useState<DashData | null>(null);
+  const [name, setName] = useState("there");
+  const [email, setEmail] = useState("student@university.edu");
+  const [gmailConnected, setGmailConnected] = useState(false);
+
+  useEffect(() => {
+    const session = getDemoSession();
+    if (session) {
+      setName(session.name || "there");
+      setEmail(session.email);
+      setGmailConnected(session.gmailConnected);
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("/api/dashboard");
+        if (!res.ok) throw new Error("api");
+        const json = await res.json();
+        setData({
+          generatedAt: new Date().toISOString(),
+          user: json.user,
+          metrics: {
+            totalLeads: json.metrics.totalLeads,
+            pendingApprovals: json.metrics.pendingApprovals,
+            scheduledSends: json.metrics.scheduledSends,
+            emailsDelivered: json.metrics.emailsDelivered,
           },
-        }),
-        prisma.scheduledEmail.count({
-          where: { userId: user.id, status: "scheduled" },
-        }),
-        prisma.scheduledEmail.count({
-          where: { userId: user.id, status: "sent" },
-        }),
-        prisma.scheduledEmail.findMany({
-          where: { userId: user.id },
-          orderBy: { updatedAt: "desc" },
-          take: 6,
-        }),
-      ]);
-    return {
-      user: {
-        email: user.email,
-        name: user.name,
-        gmailConnected: user.gmailConnected,
-      },
-      metrics: {
-        totalLeads: professors,
-        pendingApprovals: draftsPending,
-        scheduledSends: scheduled,
-        emailsDelivered: sent,
-      },
-      queue: recentScheduled.map((item) => ({
-        id: item.id,
-        professorName: item.professorName,
-        university: item.university,
-        scheduledTime: item.scheduledTime,
-        scheduledIso: item.scheduledIso.toISOString(),
-        status: item.status,
-        toEmail: item.toEmail,
-        subject: item.subject,
-        lastError: item.lastError,
-      })),
-    };
-  } catch {
-    return getDemoBundle();
-  }
-}
+          professors: [],
+          drafts: [],
+          queue: [],
+        });
+        if (!session) {
+          setName(json.user?.name || "there");
+          setEmail(json.user?.email || email);
+          setGmailConnected(!!json.user?.gmailConnected);
+        }
+      } catch {
+        setData(getDemoBundle());
+      }
+    }
+    load();
+  }, [email]);
 
-export default async function DashboardPage() {
-  const data = await loadMetrics();
-  const { metrics, user, queue } = data;
+  const metrics = data?.metrics || {
+    totalLeads: 0,
+    pendingApprovals: 0,
+    scheduledSends: 0,
+    emailsDelivered: 0,
+  };
+  const queue = data?.queue || [];
 
   const cards = [
     {
@@ -112,15 +107,26 @@ export default async function DashboardPage() {
             Dashboard
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Welcome back, {user.name || user.email}
+            Welcome back, {name}
           </p>
         </div>
-        <Badge variant={user.gmailConnected ? "secondary" : "outline"}>
-          {user.gmailConnected
-            ? `Connected · ${user.email}`
-            : `Inbox · ${user.email}`}
+        <Badge variant={gmailConnected ? "secondary" : "outline"}>
+          {gmailConnected ? `Gmail · ${email}` : `Workspace · ${email}`}
         </Badge>
       </div>
+
+      {!gmailConnected && (
+        <Alert>
+          <AlertTitle>Connect Gmail to unlock sending</AlertTitle>
+          <AlertDescription>
+            You can mine leads and approve drafts now. Connect Gmail from Account
+            when you&apos;re ready for academic-window dispatch.{" "}
+            <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+              Connect inbox
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(({ label, value, icon: Icon, href }) => (
@@ -152,7 +158,7 @@ export default async function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-0">
-            {(queue || []).slice(0, 6).map((item, idx) => (
+            {queue.slice(0, 6).map((item, idx) => (
               <div key={item.id}>
                 {idx > 0 && <Separator className="my-3" />}
                 <div className="flex items-center justify-between gap-3">
@@ -169,6 +175,11 @@ export default async function DashboardPage() {
                 </div>
               </div>
             ))}
+            {queue.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No queue items yet — approve a draft to schedule your first send.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -181,7 +192,7 @@ export default async function DashboardPage() {
               href="/directory"
               className={cn(buttonVariants({ variant: "outline" }), "justify-start")}
             >
-              Mine fresh faculty leads
+              Explore faculty directory
             </Link>
             <Link
               href="/approvals"
@@ -196,7 +207,7 @@ export default async function DashboardPage() {
               href="/login"
               className={cn(buttonVariants({ variant: "ghost" }), "justify-start")}
             >
-              Connect Gmail OAuth
+              {gmailConnected ? "Manage account" : "Connect Gmail"}
             </Link>
           </CardContent>
         </Card>
