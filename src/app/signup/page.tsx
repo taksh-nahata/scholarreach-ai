@@ -18,6 +18,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
 export default function SignupPage() {
@@ -70,6 +71,9 @@ export default function SignupPage() {
         toast.error("Google Sign-In is not configured yet. Use email signup.");
         return;
       }
+      toast.message(
+        "Family Link often blocks new apps. Prefer email + password if Google says no."
+      );
       const { signIn } = await import("next-auth/react");
       await signIn("google", { callbackUrl: "/onboarding" });
     } catch (err) {
@@ -90,26 +94,18 @@ export default function SignupPage() {
           </Link>
           <CardTitle className="font-display text-2xl">Create account</CardTitle>
           <CardDescription>
-            Free student workspace. You&apos;ll set up your CV and outreach profile
-            next.
+            Free student workspace. Family Link users: create with email + password
+            (your Gmail address works).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <Button
-            size="lg"
-            variant="outline"
-            onClick={onGoogle}
-            disabled={busy !== null}
-          >
-            {busy === "google" ? <Spinner data-icon="inline-start" /> : null}
-            Sign up with Google
-          </Button>
-
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <Separator className="flex-1" />
-            or email
-            <Separator className="flex-1" />
-          </div>
+          <Alert>
+            <AlertTitle>Family Link?</AlertTitle>
+            <AlertDescription>
+              Don&apos;t use Sign up with Google — supervised accounts are often
+              blocked. Pick a password here instead.
+            </AlertDescription>
+          </Alert>
 
           <form onSubmit={onSignup} className="flex flex-col gap-4">
             <FieldGroup>
@@ -132,6 +128,7 @@ export default function SignupPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
+                  placeholder="you@gmail.com"
                 />
               </Field>
               <Field>
@@ -145,7 +142,7 @@ export default function SignupPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
                 />
-                <FieldDescription>At least 8 characters.</FieldDescription>
+                <FieldDescription>At least 8 characters. Not your Google password.</FieldDescription>
               </Field>
             </FieldGroup>
             <Button size="lg" type="submit" disabled={busy !== null}>
@@ -157,6 +154,22 @@ export default function SignupPage() {
               Create account
             </Button>
           </form>
+
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <Separator className="flex-1" />
+            optional
+            <Separator className="flex-1" />
+          </div>
+
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={onGoogle}
+            disabled={busy !== null || !googleReady}
+          >
+            {busy === "google" ? <Spinner data-icon="inline-start" /> : null}
+            Sign up with Google
+          </Button>
         </CardContent>
         <CardFooter className="justify-between text-sm">
           <Link href="/login" className="text-primary underline-offset-4 hover:underline">

@@ -28,6 +28,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"pass" | "google" | "ms" | null>(null);
   const [providers, setProviders] = useState({ google: false, microsoft: false });
+  const [familyLinkBlocked, setFamilyLinkBlocked] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/providers-status")
@@ -36,8 +37,29 @@ function LoginForm() {
         setProviders({ google: !!d.google, microsoft: !!d.microsoft })
       )
       .catch(() => undefined);
+
+    const err = (params.get("error") || "").toLowerCase();
+    const msg = (params.get("error_description") || params.get("message") || "").toLowerCase();
+    const family =
+      err.includes("family") ||
+      msg.includes("family link") ||
+      msg.includes("managed") ||
+      err === "accessdenied" ||
+      err === "access_denied" ||
+      err === "oauthsignin" ||
+      err === "oauthcallback" ||
+      err === "oauthcreateaccount" ||
+      err === "callback";
+
     if (params.get("error")) {
-      toast.error("Sign-in was cancelled or failed. Try again.");
+      if (family || msg.includes("family")) {
+        setFamilyLinkBlocked(true);
+        toast.error(
+          "Google blocked this Family Link account for third-party apps. Use email + password below."
+        );
+      } else {
+        toast.error("Google sign-in failed. Use email + password instead.");
+      }
     }
   }, [params]);
 
@@ -83,14 +105,16 @@ function LoginForm() {
     setBusy("google");
     try {
       if (!providers.google) {
-        toast.error(
-          "Google Sign-In is not configured yet. Use email/password, or ask the admin to add Google OAuth keys."
-        );
+        toast.error("Google Sign-In is not configured. Use email + password.");
         return;
       }
+      toast.message(
+        "Family Link often blocks new apps. If Google says no, use password login."
+      );
       const { signIn } = await import("next-auth/react");
       await signIn("google", { callbackUrl: "/dashboard" });
     } catch (err) {
+      setFamilyLinkBlocked(true);
       toast.error(err instanceof Error ? err.message : "Google sign-in failed");
       setBusy(null);
     }
@@ -100,7 +124,7 @@ function LoginForm() {
     setBusy("ms");
     try {
       if (!providers.microsoft) {
-        toast.message("Outlook login is optional — connect via Connect Inbox for SMTP.");
+        toast.message("Use Connect Inbox after login for Outlook SMTP.");
         return;
       }
       const { signIn } = await import("next-auth/react");
@@ -122,37 +146,23 @@ function LoginForm() {
         </Link>
         <CardTitle className="font-display text-2xl">Sign in</CardTitle>
         <CardDescription>
-          Use your password or Google. Family Link accounts can use Google Sign-In
-          for identity; connect sending separately.
+          Family Link Google accounts should use email + password. Google Sign-In
+          is optional and often blocked for supervised accounts.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <Button
-          size="lg"
-          variant="outline"
-          onClick={onGoogle}
-          disabled={busy !== null}
-        >
-          {busy === "google" ? <Spinner data-icon="inline-start" /> : null}
-          Continue with Google
-        </Button>
-        {providers.microsoft && (
-          <Button
-            size="lg"
-            variant="outline"
-            onClick={onMicrosoft}
-            disabled={busy !== null}
-          >
-            {busy === "ms" ? <Spinner data-icon="inline-start" /> : null}
-            Continue with Microsoft
-          </Button>
-        )}
-
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <Separator className="flex-1" />
-          or email
-          <Separator className="flex-1" />
-        </div>
+        <Alert variant={familyLinkBlocked ? "destructive" : "default"}>
+          <AlertTitle>
+            {familyLinkBlocked
+              ? "Google blocked your Family Link account"
+              : "Using a Family Link Google account?"}
+          </AlertTitle>
+          <AlertDescription>
+            {familyLinkBlocked
+              ? "That's Google's restriction on supervised accounts for many new apps. Sign in with email + password below — it works with the same Gmail address."
+              : "Skip Continue with Google. Use email + password (same Gmail is fine). Google often blocks supervised accounts on unverified apps."}
+          </AlertDescription>
+        </Alert>
 
         <form onSubmit={onPasswordLogin} className="flex flex-col gap-4">
           <FieldGroup>
@@ -185,18 +195,41 @@ function LoginForm() {
             ) : (
               <ArrowRight data-icon="inline-start" />
             )}
-            Sign in
+            Sign in with password
           </Button>
         </form>
 
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <Separator className="flex-1" />
+          optional
+          <Separator className="flex-1" />
+        </div>
+
+        <Button
+          size="lg"
+          variant="outline"
+          onClick={onGoogle}
+          disabled={busy !== null || !providers.google}
+        >
+          {busy === "google" ? <Spinner data-icon="inline-start" /> : null}
+          Continue with Google
+        </Button>
+        {providers.microsoft && (
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={onMicrosoft}
+            disabled={busy !== null}
+          >
+            {busy === "ms" ? <Spinner data-icon="inline-start" /> : null}
+            Continue with Microsoft
+          </Button>
+        )}
         {!providers.google && (
-          <Alert>
-            <AlertTitle>Google button needs OAuth keys</AlertTitle>
-            <AlertDescription>
-              Until <code>GOOGLE_CLIENT_ID</code> / <code>SECRET</code> are set,
-              use email + password. See Connect Inbox setup after login.
-            </AlertDescription>
-          </Alert>
+          <p className="text-xs text-muted-foreground">
+            Google button is off until OAuth keys are added. Password login works
+            now.
+          </p>
         )}
       </CardContent>
       <CardFooter className="justify-between text-sm">
