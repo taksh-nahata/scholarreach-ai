@@ -50,8 +50,7 @@ export interface VerifyResult {
 export async function verifyFacultyEmail(
   profName: string,
   university: string,
-  currentEmail = "",
-  _userId?: string
+  currentEmail = ""
 ): Promise<VerifyResult> {
   console.log(`[EmailVerifier] Deep Qwen Audit for: ${profName} (${university})...`);
 

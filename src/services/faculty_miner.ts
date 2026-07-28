@@ -159,8 +159,7 @@ export async function mineFreshLeads(userId: string, count = 10) {
           const verified = await verifyFacultyEmail(
             extracted.name,
             university,
-            email,
-            userId
+            email
           );
           verifiedEmail = verified.primaryEmail || email;
           ccEmails = Array.from(
