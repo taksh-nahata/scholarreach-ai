@@ -3,6 +3,55 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 
+async function authorizeWorkspace(credentials: {
+  email?: string;
+  name?: string;
+  accessCode?: string;
+} | undefined) {
+  const email = (credentials?.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) return null;
+
+  const name =
+    (credentials?.name || "").trim() ||
+    process.env.DEFAULT_USER_NAME ||
+    "Student Researcher";
+
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    include: {
+      _count: {
+        select: {
+          professors: true,
+          drafts: true,
+          scheduledEmails: true,
+          sentHistory: true,
+        },
+      },
+    },
+  });
+
+  // Protect accounts that already hold private outreach data
+  const requiredCode = (process.env.WORKSPACE_ACCESS_CODE || "").trim();
+  if (existing && requiredCode) {
+    const privateRows =
+      existing._count.professors +
+      existing._count.drafts +
+      existing._count.scheduledEmails +
+      existing._count.sentHistory;
+    if (privateRows > 0) {
+      const provided = (credentials?.accessCode || "").trim();
+      if (provided !== requiredCode) return null;
+    }
+  }
+
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: { name },
+    create: { email, name },
+  });
+  return { id: user.id, email: user.email, name: user.name };
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
@@ -27,47 +76,29 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         name: { label: "Name", type: "text" },
+        accessCode: { label: "Access code", type: "password" },
       },
       async authorize(credentials) {
-        const email = (credentials?.email || "").trim().toLowerCase();
-        if (!email || !email.includes("@")) return null;
-        const name =
-          (credentials?.name || "").trim() ||
-          process.env.DEFAULT_USER_NAME ||
-          "Student Researcher";
-        const user = await prisma.user.upsert({
-          where: { email },
-          update: { name },
-          create: { email, name },
-        });
-        return { id: user.id, email: user.email, name: user.name };
+        return authorizeWorkspace(credentials);
       },
     }),
-    // Keep legacy id for older clients
-    CredentialsProvider({
-      id: "dev-login",
-      name: "Dev Login",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        name: { label: "Name", type: "text" },
-      },
-      async authorize(credentials) {
-        const email =
-          (credentials?.email || "").trim().toLowerCase() ||
-          process.env.DEFAULT_USER_EMAIL ||
-          "taksh.nahata37@gmail.com";
-        const name =
-          (credentials?.name || "").trim() ||
-          process.env.DEFAULT_USER_NAME ||
-          "Taksh Nahata";
-        const user = await prisma.user.upsert({
-          where: { email },
-          update: { name },
-          create: { email, name },
-        });
-        return { id: user.id, email: user.email, name: user.name };
-      },
-    }),
+    // Dev-only shortcut — disabled in production
+    ...(process.env.NODE_ENV !== "production"
+      ? [
+          CredentialsProvider({
+            id: "dev-login",
+            name: "Dev Login",
+            credentials: {
+              email: { label: "Email", type: "email" },
+              name: { label: "Name", type: "text" },
+              accessCode: { label: "Access code", type: "password" },
+            },
+            async authorize(credentials) {
+              return authorizeWorkspace(credentials);
+            },
+          }),
+        ]
+      : []),
   ],
   callbacks: {
     async signIn({ user, account }) {

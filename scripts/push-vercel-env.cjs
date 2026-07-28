@@ -52,7 +52,9 @@ const vars = {
   NEXTAUTH_SECRET: local.NEXTAUTH_SECRET,
   DEFAULT_USER_EMAIL: local.DEFAULT_USER_EMAIL || "taksh.nahata37@gmail.com",
   DEFAULT_USER_NAME: local.DEFAULT_USER_NAME || "Taksh Nahata",
-  ALLOW_DEFAULT_USER: "true",
+  // Fail closed in production — never auto-login as the owner
+  ALLOW_DEFAULT_USER: "false",
+  WORKSPACE_ACCESS_CODE: local.WORKSPACE_ACCESS_CODE || "",
   GOOGLE_CLIENT_ID: local.GOOGLE_CLIENT_ID || "",
   GOOGLE_CLIENT_SECRET: local.GOOGLE_CLIENT_SECRET || "",
   GOOGLE_REDIRECT_URI: `${liveUrl}/api/auth/callback/google`,
@@ -63,12 +65,18 @@ const vars = {
   TAVILY_API_KEY: local.TAVILY_API_KEY || "",
   FIRECRAWL_API_KEY: local.FIRECRAWL_API_KEY || "",
   DAILY_SEND_CAP: local.DAILY_SEND_CAP || "500",
-  DRIP_DRY_RUN: local.DRIP_DRY_RUN || "true",
+  // Keep sends free/safe until Gmail OAuth is intentionally enabled
+  DRIP_DRY_RUN: "true",
   NEXT_PUBLIC_LIVE_APP_URL: liveUrl,
 };
 
 function upsert(key, value, envName) {
   if (value === undefined || value === null) return;
+  // Skip empty secrets (Vercel rejects blank values)
+  if (value === "" && (key.includes("SECRET") || key.includes("KEY") || key.includes("CLIENT"))) {
+    console.log(`skip empty ${key}`);
+    return;
+  }
   // Remove existing then add (idempotent)
   try {
     execSync(`vercel env rm ${key} ${envName} -y`, {

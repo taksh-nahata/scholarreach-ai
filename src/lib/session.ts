@@ -2,6 +2,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Resolve the signed-in workspace user.
+ * Production fails closed — never falls back to a default account.
+ */
 export async function requireUser() {
   const session = await getServerSession(authOptions);
   if (session?.user?.email) {
@@ -11,9 +15,14 @@ export async function requireUser() {
     if (user) return user;
   }
 
-  // Production: require a real session. Dev fallback only when ALLOW_DEFAULT_USER=true
-  if (process.env.ALLOW_DEFAULT_USER === "true" || process.env.NODE_ENV !== "production") {
-    const email = process.env.DEFAULT_USER_EMAIL || "taksh.nahata37@gmail.com";
+  // Local/dev only — never in production (protects private outreach data)
+  const allowFallback =
+    process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_DEFAULT_USER === "true";
+
+  if (allowFallback) {
+    const email =
+      process.env.DEFAULT_USER_EMAIL || "taksh.nahata37@gmail.com";
     return prisma.user.upsert({
       where: { email },
       update: {},

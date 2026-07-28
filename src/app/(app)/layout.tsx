@@ -1,6 +1,8 @@
 import { AppNav } from "@/app/components/AppNav";
 
-export const dynamic = "force-static";
+// Live app must be dynamic for NextAuth sessions. Static export still works via Pages build.
+export const dynamic =
+  process.env.NEXT_PUBLIC_STATIC_EXPORT === "true" ? "force-static" : "force-dynamic";
 
 export default function AppShellLayout({
   children,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Mail, Sparkles, ArrowRight } from "lucide-react";
+import { Mail, Sparkles, ArrowRight, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -26,8 +26,9 @@ import { LIVE_APP_URL } from "@/lib/live-app";
 export default function LoginPage() {
   const router = useRouter();
   const { isStatic } = useAuth();
-  const [name, setName] = useState("Taksh Nahata");
-  const [email, setEmail] = useState("taksh.nahata37@gmail.com");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [busy, setBusy] = useState<"free" | "gmail" | null>(null);
   const staticMode =
     isStatic || process.env.NEXT_PUBLIC_STATIC_EXPORT === "true";
@@ -41,10 +42,15 @@ export default function LoginPage() {
     const result = await signIn("workspace-login", {
       email: email.trim().toLowerCase(),
       name: name.trim() || "Student Researcher",
+      accessCode: accessCode.trim(),
       redirect: false,
       callbackUrl: "/dashboard",
     });
-    if (result?.error) throw new Error(result.error);
+    if (result?.error) {
+      throw new Error(
+        "Sign-in failed. New workspaces are free — if this email already has private data, enter your workspace access code."
+      );
+    }
     if (result?.url) {
       window.location.href = result.url;
       return;
@@ -56,8 +62,11 @@ export default function LoginPage() {
     setBusy("free");
     try {
       if (staticMode) {
-        // Prefer the real hosted account over browser-only demo auth
         window.location.href = `${LIVE_APP_URL}/login`;
+        return;
+      }
+      if (!email.trim() || !email.includes("@")) {
+        toast.error("Enter a valid email for your workspace");
         return;
       }
       await workspaceSignIn();
@@ -82,14 +91,13 @@ export default function LoginPage() {
         return;
       }
 
-      // Ensure workspace user exists first
       await workspaceSignIn();
 
       const { signIn, getProviders } = await import("next-auth/react");
       const providers = await getProviders();
       if (!providers?.google) {
         toast.message(
-          "Google OAuth keys not set yet — signed into workspace. Add GOOGLE_CLIENT_ID/SECRET on Vercel to enable Connect Gmail."
+          "Workspace ready. Add Google OAuth keys to enable Connect Gmail."
         );
         goDashboard();
         return;
@@ -104,7 +112,7 @@ export default function LoginPage() {
         return;
       }
 
-      toast.message("Google OAuth not configured yet — workspace signed in");
+      toast.message("Workspace signed in");
       goDashboard();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Auth failed");
@@ -125,11 +133,11 @@ export default function LoginPage() {
             <span className="font-display">ScholarReach AI</span>
           </Link>
           <CardTitle className="font-display text-2xl">
-            Sign in to your workspace
+            Open your free workspace
           </CardTitle>
           <CardDescription>
-            Access your faculty leads, draft approvals, and academic-window queue.
-            Connect Gmail when you&apos;re ready to send.
+            Create a private student account in seconds. Your faculty leads,
+            drafts, and send history stay isolated to your workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -146,11 +154,19 @@ export default function LoginPage() {
                 >
                   Open the live app
                 </a>{" "}
-                to use your real account ({" "}
-                <code className="text-xs">taksh.nahata37@gmail.com</code>).
+                for your private account.
               </AlertDescription>
             </Alert>
           )}
+
+          <Alert>
+            <ShieldCheck className="size-4" />
+            <AlertTitle>Private by default</AlertTitle>
+            <AlertDescription>
+              Existing workspaces with outreach data require an access code.
+              Brand-new student accounts are free — no credit card.
+            </AlertDescription>
+          </Alert>
 
           <FieldGroup>
             <Field>
@@ -174,8 +190,21 @@ export default function LoginPage() {
                 autoComplete="email"
               />
               <FieldDescription>
-                Used for your workspace identity and optional Gmail connection.
+                Used as your workspace identity. Never shared publicly.
               </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="accessCode">
+                Access code (returning accounts)
+              </FieldLabel>
+              <Input
+                id="accessCode"
+                type="password"
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                placeholder="Required if this email already has data"
+                autoComplete="current-password"
+              />
             </Field>
           </FieldGroup>
 
@@ -199,15 +228,20 @@ export default function LoginPage() {
               ) : (
                 <ArrowRight data-icon="inline-start" />
               )}
-              Sign in without Gmail
+              Continue free without Gmail
             </Button>
           </div>
 
           <Separator />
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Free for high school and college students. Production sending uses
-            official Google OAuth with <code className="text-primary">gmail.send</code>{" "}
-            only — never app passwords.
+            Free forever for students on the Hobby stack (Vercel + Neon).
+            Production sending uses Google OAuth with{" "}
+            <code className="text-primary">gmail.send</code> — never app
+            passwords. See{" "}
+            <Link href="/privacy" className="text-primary underline-offset-4 hover:underline">
+              Privacy
+            </Link>
+            .
           </p>
         </CardContent>
         <CardFooter className="justify-center text-xs text-muted-foreground">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Users, Clock, Send, Inbox, ArrowRight } from "lucide-react";
+import { Users, Clock, Send, Inbox, ArrowRight, History } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -18,13 +18,34 @@ import { cn } from "@/lib/utils";
 import { getDemoBundle } from "@/lib/demo";
 import { getDemoSession } from "@/lib/demo-auth";
 
-type DashData = ReturnType<typeof getDemoBundle>;
+type QueueItem = {
+  id: string;
+  professorName?: string | null;
+  university?: string | null;
+  toEmail?: string | null;
+  subject?: string | null;
+  scheduledIso?: string | null;
+  scheduledTime?: string | null;
+  status: string;
+};
+
+type DashData = {
+  metrics: {
+    totalLeads: number;
+    pendingApprovals: number;
+    scheduledSends: number;
+    emailsDelivered: number;
+    contacted?: number;
+  };
+  queue: QueueItem[];
+};
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashData | null>(null);
   const [name, setName] = useState("there");
-  const [email, setEmail] = useState("student@university.edu");
+  const [email, setEmail] = useState("");
   const [gmailConnected, setGmailConnected] = useState(false);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   useEffect(() => {
     const session = getDemoSession();
@@ -37,64 +58,96 @@ export default function DashboardPage() {
     async function load() {
       try {
         const res = await fetch("/api/dashboard");
+        if (res.status === 401 || res.status === 500) {
+          const text = await res.text();
+          if (/Unauthorized/i.test(text) || res.status === 401) {
+            setUnauthorized(true);
+            return;
+          }
+        }
         if (!res.ok) throw new Error("api");
         const json = await res.json();
         setData({
-          generatedAt: new Date().toISOString(),
-          user: json.user,
           metrics: {
             totalLeads: json.metrics.totalLeads,
             pendingApprovals: json.metrics.pendingApprovals,
             scheduledSends: json.metrics.scheduledSends,
             emailsDelivered: json.metrics.emailsDelivered,
+            contacted: json.metrics.contacted,
           },
-          professors: [],
-          drafts: [],
-          queue: [],
+          queue: json.queue || [],
         });
         if (!session) {
           setName(json.user?.name || "there");
-          setEmail(json.user?.email || email);
+          setEmail(json.user?.email || "");
           setGmailConnected(!!json.user?.gmailConnected);
         }
       } catch {
-        setData(getDemoBundle());
+        const demo = getDemoBundle();
+        setData({
+          metrics: demo.metrics,
+          queue: demo.queue as QueueItem[],
+        });
       }
     }
     load();
-  }, [email]);
+  }, []);
+
+  if (unauthorized) {
+    return (
+      <div className="mx-auto max-w-lg py-16">
+        <Alert>
+          <AlertTitle>Sign in required</AlertTitle>
+          <AlertDescription>
+            Your outreach data is private.{" "}
+            <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+              Open your workspace
+            </Link>{" "}
+            to continue.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   const metrics = data?.metrics || {
     totalLeads: 0,
     pendingApprovals: 0,
     scheduledSends: 0,
     emailsDelivered: 0,
+    contacted: 0,
   };
   const queue = data?.queue || [];
 
   const cards = [
     {
-      label: "Total Leads Mined",
+      label: "Faculty leads",
       value: metrics.totalLeads,
       icon: Users,
       href: "/directory",
     },
     {
-      label: "Pending Approvals",
+      label: "Pending approvals",
       value: metrics.pendingApprovals,
       icon: Inbox,
       href: "/approvals",
     },
     {
-      label: "Scheduled Sends",
+      label: "Scheduled sends",
       value: metrics.scheduledSends,
       icon: Clock,
       href: "/queue",
     },
     {
-      label: "Emails Delivered",
+      label: "Emails delivered",
       value: metrics.emailsDelivered,
       icon: Send,
+      href: "/queue",
+    },
+    {
+      label: "Contact history",
+      value: metrics.contacted || 0,
+      icon: History,
       href: "/queue",
     },
   ];
@@ -107,31 +160,38 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Welcome back, {name}
+            Welcome back{name ? `, ${name}` : ""}
           </p>
         </div>
         <Badge variant={gmailConnected ? "secondary" : "outline"}>
-          {gmailConnected ? `Gmail · ${email}` : `Workspace · ${email}`}
+          {gmailConnected
+            ? `Gmail · ${email}`
+            : email
+              ? `Workspace · ${email}`
+              : "Private workspace"}
         </Badge>
       </div>
 
       {!gmailConnected && (
         <Alert>
-          <AlertTitle>Connect Gmail to unlock sending</AlertTitle>
+          <AlertTitle>Connect Gmail to unlock live sending</AlertTitle>
           <AlertDescription>
-            You can mine leads and approve drafts now. Connect Gmail from Account
-            when you&apos;re ready for academic-window dispatch.{" "}
-            <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+            Mining and approvals work now. Dispatch stays dry-run until Gmail
+            OAuth is connected and dry-run is disabled.{" "}
+            <Link
+              href="/login"
+              className="text-primary underline-offset-4 hover:underline"
+            >
               Connect inbox
             </Link>
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {cards.map(({ label, value, icon: Icon, href }) => (
           <Link key={label} href={href}>
-            <Card className="transition hover:ring-primary/30">
+            <Card className="h-full transition hover:ring-primary/30">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardDescription>{label}</CardDescription>
                 <Icon className="size-4 text-primary" />
@@ -152,23 +212,23 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="font-display">Recent queue activity</CardTitle>
+            <CardTitle className="font-display">Your outreach queue</CardTitle>
             <CardDescription>
-              Latest scheduled and delivered outreach
+              Scheduled and delivered messages from your private account
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-0">
-            {queue.slice(0, 6).map((item, idx) => (
+            {queue.slice(0, 8).map((item, idx) => (
               <div key={item.id}>
                 {idx > 0 && <Separator className="my-3" />}
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate font-medium">
-                      {item.professorName || item.toEmail}
+                      {item.professorName || item.toEmail || item.subject}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {item.university} ·{" "}
-                      {item.scheduledTime || item.scheduledIso}
+                      {item.university || "—"} ·{" "}
+                      {item.scheduledTime || item.scheduledIso || "unscheduled"}
                     </div>
                   </div>
                   <Badge variant="secondary">{item.status}</Badge>
@@ -196,12 +256,15 @@ export default function DashboardPage() {
             </Link>
             <Link
               href="/approvals"
-              className={cn(buttonVariants({ variant: "outline" }), "justify-start")}
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "justify-start"
+              )}
             >
               Review pending drafts ({metrics.pendingApprovals})
             </Link>
             <Link href="/queue" className={cn(buttonVariants(), "justify-start")}>
-              Open outreach queue
+              Open full outreach queue
             </Link>
             <Link
               href="/login"

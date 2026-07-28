@@ -33,7 +33,7 @@ jobs:
       - name: Ensure demo data exists
         run: |
           if [ ! -f public/demo-data.json ]; then
-            node -e "const fs=require('fs');fs.mkdirSync('public',{recursive:true});fs.writeFileSync('public/demo-data.json', JSON.stringify({generatedAt:new Date().toISOString(),user:{email:'demo@scholarreach.ai',name:'Alex Rivera',gmailConnected:false},metrics:{totalLeads:48,pendingApprovals:6,scheduledSends:12,emailsDelivered:24},professors:[],drafts:[],queue:[]},null,2))"
+            node -e "const fs=require('fs');fs.mkdirSync('public',{recursive:true});fs.writeFileSync('public/demo-data.json', JSON.stringify({generatedAt:new Date().toISOString(),user:{email:'student@university.edu',name:'Alex Rivera',gmailConnected:false},metrics:{totalLeads:48,pendingApprovals:6,scheduledSends:12,emailsDelivered:24},professors:[],drafts:[],queue:[]},null,2))"
           fi
       - name: Static export
         run: npm run build:gh-pages
@@ -43,7 +43,7 @@ jobs:
           NEXT_PUBLIC_STATIC_EXPORT: "true"
           NEXT_PUBLIC_LIVE_APP_URL: https://scholarreach-ai.vercel.app
           BASE_PATH: /${{ github.event.repository.name }}
-          DEFAULT_USER_EMAIL: taksh.nahata37@gmail.com
+          DEFAULT_USER_EMAIL: student@university.edu
       - uses: actions/upload-pages-artifact@v3
         with:
           path: out

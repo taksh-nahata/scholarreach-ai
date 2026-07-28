@@ -86,7 +86,11 @@ const audiences = [
 const faqs = [
   {
     q: "Is ScholarReach really free for students?",
-    a: "Yes. The student tier is free while we grow the platform. Connect Gmail when you’re ready to send.",
+    a: "Yes — free forever on the student Hobby stack (Vercel + Neon). No credit card. Optional mining APIs are paid by the operator, never billed to you.",
+  },
+  {
+    q: "Is my outreach data private?",
+    a: "Yes. Faculty leads, drafts, scheduled sends, and contact history stay inside your workspace. The public GitHub Pages demo uses synthetic sample data only.",
   },
   {
     q: "Will professors know it’s automated?",
@@ -99,6 +103,33 @@ const faqs = [
   {
     q: "Do you store my Gmail password?",
     a: "Never. Production sending uses official Google OAuth tokens with gmail.send scope only.",
+  },
+];
+
+const pricing = [
+  {
+    name: "Student",
+    price: "$0",
+    note: "Forever",
+    features: [
+      "Private workspace",
+      "Faculty directory & approvals",
+      "Academic-window drip queue",
+      "Gmail OAuth when you’re ready",
+    ],
+    cta: true,
+  },
+  {
+    name: "Labs & clubs",
+    price: "$0",
+    note: "Same free stack",
+    features: [
+      "Shared workflow for career offices",
+      "Human approval on every send",
+      "500/hr drip physics",
+      "No seat fees on Hobby",
+    ],
+    cta: false,
   },
 ];
 
@@ -300,6 +331,55 @@ export default function LandingPage() {
       </section>
 
       <section className="relative z-10 mx-auto max-w-6xl px-6 pb-16">
+        <div className="mb-8 max-w-2xl">
+          <h2 className="font-display text-3xl font-semibold tracking-tight">
+            Pricing that stays free
+          </h2>
+          <p className="mt-3 text-muted-foreground">
+            Built on free Hobby hosting. Your account data stays private — the
+            marketing site never ships your faculty list.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {pricing.map((tier) => (
+            <Card key={tier.name} className={tier.cta ? "ring-1 ring-primary/40" : undefined}>
+              <CardHeader>
+                <Badge variant={tier.cta ? "default" : "secondary"} className="w-fit">
+                  {tier.note}
+                </Badge>
+                <CardTitle className="font-display text-2xl">{tier.name}</CardTitle>
+                <div className="font-display text-4xl font-semibold tracking-tight">
+                  {tier.price}
+                </div>
+                <CardDescription>No credit card. No trial cliff.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {tier.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                {tier.cta && (
+                  <Link
+                    href={primaryCtaHref}
+                    className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}
+                    {...(staticDemo
+                      ? { target: "_blank", rel: "noopener noreferrer" }
+                      : {})}
+                  >
+                    {primaryCtaLabel}
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="relative z-10 mx-auto max-w-6xl px-6 pb-16">
         <h2 className="font-display text-3xl font-semibold tracking-tight">FAQ</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {faqs.map((item) => (
@@ -350,10 +430,26 @@ export default function LandingPage() {
             </span>
             ScholarReach AI
           </div>
-          <p>
-            © {new Date().getFullYear()} ScholarReach AI · Student research
-            outreach platform
-          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link href="/privacy" className="hover:text-foreground">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-foreground">
+              Terms
+            </Link>
+            <Link
+              href={staticDemo ? LIVE_APP_URL : "/login"}
+              className="hover:text-foreground"
+              {...(staticDemo
+                ? { target: "_blank", rel: "noopener noreferrer" }
+                : {})}
+            >
+              Live app
+            </Link>
+            <p>
+              © {new Date().getFullYear()} ScholarReach AI · Free student SaaS
+            </p>
+          </div>
         </div>
       </footer>
     </main>
