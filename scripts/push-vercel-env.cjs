@@ -70,6 +70,11 @@ const vars = {
   // Keep sends free/safe until inbox connect is intentionally enabled
   DRIP_DRY_RUN: "true",
   NEXT_PUBLIC_LIVE_APP_URL: liveUrl,
+  SEARCH_DAILY_BUDGET_EXA: local.SEARCH_DAILY_BUDGET_EXA || "15",
+  SEARCH_DAILY_BUDGET_TAVILY: local.SEARCH_DAILY_BUDGET_TAVILY || "25",
+  SEARCH_DAILY_BUDGET_FIRECRAWL: local.SEARCH_DAILY_BUDGET_FIRECRAWL || "20",
+  SEARCH_DAILY_BUDGET_LLM: local.SEARCH_DAILY_BUDGET_LLM || "80",
+  MIN_MATCH_SCORE: local.MIN_MATCH_SCORE || "40",
 };
 
 function upsert(key, value, envName) {

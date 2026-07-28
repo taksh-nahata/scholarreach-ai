@@ -1,45 +1,39 @@
 /**
- * ScholarReach AI — Faculty Discovery Miner with name+university dedupe
+ * Profile-aware faculty discovery.
+ * Targets universities from the student's regions and topics from their interests/skills.
+ * Conserves Exa: prefer Tavily snippets + Firecrawl; Exa only when budget remains.
  */
 import { prisma } from "@/lib/prisma";
 import { normalizeDedupeKey, toJsonArray } from "@/lib/utils";
+import { universitiesForRegions, topicsFromProfile } from "@/lib/university_pools";
+import { getProfileBundle } from "@/services/profile_service";
+import { scoreProfessorMatch, skillsToText } from "@/services/match_scorer";
+import { tryConsumeApi } from "@/services/api_budget";
 import { exaClient } from "./exa_client";
 import { tavilyClient } from "./tavily_client";
 import { firecrawlClient } from "./firecrawl_client";
-import { unscrambleEmail, isPlaceholderEmail, verifyFacultyEmail } from "./faculty_email_verifier";
+import {
+  unscrambleEmail,
+  isPlaceholderEmail,
+  verifyFacultyEmail,
+} from "./faculty_email_verifier";
 
-const TARGET_UNIVERSITIES = [
-  "UC Berkeley",
-  "UCLA",
-  "UC San Diego",
-  "Stanford University",
-  "MIT",
-  "Carnegie Mellon University",
-  "Columbia University",
-  "Cornell University",
-  "Princeton University",
-  "Georgia Tech",
-  "University of Michigan",
-  "UT Austin",
-  "University of Toronto",
-  "ETH Zurich",
-  "University of Oxford",
-];
-
-const TOPICS = [
-  "Robotics, Computer Vision, or Embedded Systems",
-  "Machine Learning, Artificial Intelligence, or LLMs",
-];
-
-async function extractFacultyData(pageText: string, university: string) {
+async function extractFacultyData(
+  pageText: string,
+  university: string,
+  topicHint: string,
+  userId: string
+) {
   const base = process.env.PROVOCATIVE_BASE_URL;
   const key = process.env.PROVOCATIVE_API_KEY;
   if (!base || !key) return null;
+  if (!(await tryConsumeApi(userId, "llm", 1))) return null;
 
-  const prompt = `You are an AI data extractor. Extract the faculty member's information from the following webpage text.
+  const prompt = `You are an AI data extractor for academic faculty pages.
+Student is looking for faculty related to: ${topicHint}
+Extract ONE faculty member who best matches that interest from the page.
 Return ONLY valid JSON.
 
-Required JSON format:
 {
   "valid": true,
   "name": "Dr. Full Name",
@@ -49,13 +43,16 @@ Required JSON format:
   "specialInstructions": "",
   "university": "${university}",
   "lab_name": "Lab Name",
-  "research_focus": "3-6 word focus",
-  "recent_paper": "",
-  "location_mode": "Remote",
-  "tags": ["AI/ML"]
+  "research_focus": "3-8 word focus matching student interest when possible",
+  "recent_paper": "specific paper title if present else empty",
+  "location_mode": "Remote|Hybrid|In-person",
+  "tags": ["topic","tags"],
+  "fit_note": "one sentence why they match the student interest"
 }
 
-Webpage Text:
+If the page is not a faculty profile, set "valid": false.
+
+Webpage:
 ${pageText.substring(0, 5000)}`;
 
   try {
@@ -84,24 +81,60 @@ ${pageText.substring(0, 5000)}`;
   }
 }
 
-export async function mineFreshLeads(userId: string, count = 20) {
-  const mined: Array<{ name: string; university: string; email?: string }> = [];
-  const universities = [...TARGET_UNIVERSITIES].sort(() => Math.random() - 0.5);
+export async function mineFreshLeads(userId: string, count = 10) {
+  const bundle = await getProfileBundle(userId);
+  const profile = bundle?.profile;
+  const regions = (profile?.targetRegions || []) as string[];
+  const skills = (profile?.skills || {}) as {
+    languages?: string[];
+    frameworks?: string[];
+    expertise?: string[];
+  };
+
+  const universities = universitiesForRegions(regions).sort(
+    () => Math.random() - 0.5
+  );
+  const topics = topicsFromProfile({
+    researchInterests: profile?.researchInterests,
+    skills,
+    headline: profile?.headline,
+  });
+
+  const mined: Array<{
+    name: string;
+    university: string;
+    email?: string;
+    matchScore?: number;
+  }> = [];
+
+  const skillsText = skillsToText(skills);
+  const minScore = Number(process.env.MIN_MATCH_SCORE || 40);
 
   for (const university of universities) {
     if (mined.length >= count) break;
-    const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-    const results = await tavilyClient.searchFacultyPages(university, topic, 3);
+    const topic = topics[Math.floor(Math.random() * topics.length)];
+
+    if (!(await tryConsumeApi(userId, "tavily", 1))) break;
+    const results = await tavilyClient.searchFacultyPages(university, topic, 2);
 
     for (const result of results) {
       if (mined.length >= count) break;
-      const markdown = await firecrawlClient.scrapeUrl(result.url);
-      const text =
-        markdown ||
-        (await exaClient.searchWeb(`"${result.title}" ${university} faculty email`));
+
+      let text = result.snippet || "";
+      if (text.length < 200) {
+        if (await tryConsumeApi(userId, "firecrawl", 1)) {
+          const md = await firecrawlClient.scrapeUrl(result.url);
+          if (md) text = md;
+        }
+      }
+      if (text.length < 80 && (await tryConsumeApi(userId, "exa", 1))) {
+        text = await exaClient.searchWeb(
+          `"${result.title}" ${university} faculty ${topic}`
+        );
+      }
       if (!text || text.length < 80) continue;
 
-      const extracted = await extractFacultyData(text, university);
+      const extracted = await extractFacultyData(text, university, topic, userId);
       if (!extracted?.valid || !extracted.name) continue;
 
       const email = unscrambleEmail(extracted.email || "");
@@ -118,15 +151,31 @@ export async function mineFreshLeads(userId: string, count = 20) {
       let emailVerified = false;
       let verificationNotes = "";
 
-      if (email || extracted.name) {
-        const verified = await verifyFacultyEmail(extracted.name, university, email);
-        verifiedEmail = verified.primaryEmail || email;
-        ccEmails = Array.from(new Set([...(ccEmails || []), ...verified.ccEmails]));
-        emailVerified = verified.verified;
-        verificationNotes = verified.reasoning;
+      const looksGood =
+        !!email && email.includes(".edu") && !isPlaceholderEmail(email);
+
+      if (!looksGood && (email || extracted.name)) {
+        if (await tryConsumeApi(userId, "exa", 1)) {
+          const verified = await verifyFacultyEmail(
+            extracted.name,
+            university,
+            email,
+            userId
+          );
+          verifiedEmail = verified.primaryEmail || email;
+          ccEmails = Array.from(
+            new Set([...(ccEmails || []), ...verified.ccEmails])
+          );
+          emailVerified = verified.verified;
+          verificationNotes = verified.reasoning;
+        }
+      } else if (looksGood) {
+        emailVerified = true;
+        verificationNotes =
+          "Accepted institutional email without Exa (budget save).";
       }
 
-      if (!extracted.recent_paper) {
+      if (!extracted.recent_paper && (await tryConsumeApi(userId, "exa", 1))) {
         const paper = await exaClient.findRecentPaper(
           extracted.name,
           university,
@@ -134,6 +183,23 @@ export async function mineFreshLeads(userId: string, count = 20) {
         );
         if (paper) extracted.recent_paper = paper;
       }
+
+      const { score, reason } = scoreProfessorMatch({
+        researchInterests: profile?.researchInterests,
+        skillsText,
+        workModePref: profile?.workModePref,
+        location: profile?.location,
+        professor: {
+          researchFocus: extracted.research_focus,
+          recentPaper: extracted.recent_paper,
+          labName: extracted.lab_name,
+          tags: extracted.tags || [],
+          locationMode: extracted.location_mode,
+          university,
+        },
+      });
+
+      if (score < minScore) continue;
 
       await prisma.professor.create({
         data: {
@@ -152,13 +218,25 @@ export async function mineFreshLeads(userId: string, count = 20) {
           specialInstructions: extracted.specialInstructions || null,
           emailVerified,
           verificationNotes,
+          matchScore: score,
+          matchReason: reason || extracted.fit_note || null,
           dedupeKey,
         },
       });
 
-      mined.push({ name: extracted.name, university, email: verifiedEmail });
+      mined.push({
+        name: extracted.name,
+        university,
+        email: verifiedEmail,
+        matchScore: score,
+      });
     }
   }
 
-  return { mined: mined.length, leads: mined };
+  mined.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  return {
+    mined: mined.length,
+    leads: mined,
+    targeting: { regions, topics, universitiesTried: universities.slice(0, 8) },
+  };
 }

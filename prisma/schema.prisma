@@ -88,6 +88,11 @@ model StudentProfile {
   // Compiled brief for email prompts
   profileBrief String?
 
+  // Automation preferences
+  // manual | agent_gate | auto
+  autoApproveMode         String  @default("manual")
+  autoApproveMinApprovals Int     @default(5)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -146,6 +151,8 @@ model Professor {
   emailVerified      Boolean  @default(false)
   verificationNotes  String?
   specialInstructions String?
+  matchScore         Int?
+  matchReason        String?
   dedupeKey          String   // normalized name|university
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -157,6 +164,7 @@ model Professor {
   @@unique([userId, dedupeKey])
   @@index([userId, university])
   @@index([userId, email])
+  @@index([userId, matchScore])
 }
 
 model Draft {
@@ -173,6 +181,9 @@ model Draft {
   providerUsed   String?
   isFallback     Boolean  @default(false)
   specialNotes   String?
+  matchScore     Int?
+  reviewStatus   String?  // pending_review | awaiting_human | agent_approved | agent_rejected | human_approved
+  reviewNotes    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -180,6 +191,21 @@ model Draft {
   professor Professor? @relation(fields: [professorId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
+}
+
+model ApiUsageDaily {
+  id         String @id @default(cuid())
+  userId     String
+  day        String // YYYY-MM-DD
+  exa        Int    @default(0)
+  tavily     Int    @default(0)
+  firecrawl  Int    @default(0)
+  llm        Int    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, day])
+  @@index([userId])
 }
 
 model ScheduledEmail {

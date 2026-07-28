@@ -7,24 +7,29 @@ import {
 
 export async function POST(req: NextRequest) {
   return withAuthUser(async (user) => {
-    const body = await req.json();
-    if (body.professorId) {
-      const draft = await generatePersonalizedDraft({
-        userId: user.id,
-        professorId: String(body.professorId),
-      });
-      return NextResponse.json({ draft });
-    }
-    if (Array.isArray(body.professorIds)) {
-      const drafts = await generateDraftsForProfessors(
-        user.id,
-        body.professorIds.map(String)
+    try {
+      const body = await req.json();
+      if (body.professorId) {
+        const result = await generatePersonalizedDraft({
+          userId: user.id,
+          professorId: String(body.professorId),
+        });
+        return NextResponse.json(result);
+      }
+      if (Array.isArray(body.professorIds)) {
+        const drafts = await generateDraftsForProfessors(
+          user.id,
+          body.professorIds.map(String)
+        );
+        return NextResponse.json({ drafts, count: drafts.length });
+      }
+      return NextResponse.json(
+        { error: "Provide professorId or professorIds" },
+        { status: 400 }
       );
-      return NextResponse.json({ drafts, count: drafts.length });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Draft failed";
+      return NextResponse.json({ error: message }, { status: 400 });
     }
-    return NextResponse.json(
-      { error: "Provide professorId or professorIds" },
-      { status: 400 }
-    );
   });
 }

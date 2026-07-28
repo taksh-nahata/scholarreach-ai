@@ -35,6 +35,9 @@ type Draft = {
   recipientEmail: string | null;
   ccEmails: string | null;
   specialNotes?: string | null;
+  matchScore?: number | null;
+  reviewStatus?: string | null;
+  reviewNotes?: string | null;
   professor: {
     name: string;
     university: string;
@@ -42,6 +45,8 @@ type Draft = {
     recentPaper: string | null;
     email: string | null;
     specialInstructions: string | null;
+    matchScore?: number | null;
+    matchReason?: string | null;
   } | null;
 };
 
@@ -79,7 +84,10 @@ export default function ApprovalsPage() {
     load();
   }, []);
 
-  async function act(draftId: string, action: "approve" | "reject") {
+  async function act(
+    draftId: string,
+    action: "approve" | "reject" | "agent_review"
+  ) {
     setBusyId(draftId);
     const started = performance.now();
     try {
@@ -88,7 +96,7 @@ export default function ApprovalsPage() {
         toast.success(
           action === "approve"
             ? `Demo approved in ${Math.round(performance.now() - started)}ms`
-            : `Demo rejected in ${Math.round(performance.now() - started)}ms`
+            : `Demo ${action} in ${Math.round(performance.now() - started)}ms`
         );
         return;
       }
@@ -99,16 +107,26 @@ export default function ApprovalsPage() {
           draftId,
           action,
           ccEmails: ccMap[draftId] || "",
+          autoSchedule: action === "agent_review",
         }),
       });
       const data = await res.json();
       const elapsed = Math.round(performance.now() - started);
       if (!res.ok) throw new Error(data.error || "Action failed");
+      if (action === "agent_review" && !data.scheduledTime) {
+        toast.message(
+          data.verdict?.approve
+            ? `Agent liked it (${data.verdict.score}) — still pending schedule`
+            : `Agent held it: ${data.verdict?.notes || "needs edits"}`
+        );
+        await load();
+        return;
+      }
       setDrafts((prev) => prev.filter((d) => d.id !== draftId));
       toast.success(
-        action === "approve"
-          ? `Approved in ${elapsed}ms · ${data.scheduledTime}`
-          : `Rejected in ${elapsed}ms`
+        action === "reject"
+          ? `Rejected in ${elapsed}ms`
+          : `Queued in ${elapsed}ms · ${data.scheduledTime || "ok"}`
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
@@ -124,7 +142,9 @@ export default function ApprovalsPage() {
           Draft Approvals
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          One-click instant approval — UI responds immediately while the queue syncs
+          Review profile-matched drafts. Use Agent review to simulate your
+          approval bar, or enable auto-approve in Settings after you trust the
+          voice.
         </p>
       </div>
 
@@ -169,12 +189,30 @@ export default function ApprovalsPage() {
                       {d.professor?.researchFocus || "Research focus n/a"}
                     </CardDescription>
                   </div>
-                  <Badge variant="outline">
-                    To: {d.recipientEmail || d.professor?.email || "—"}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant="outline">
+                      To: {d.recipientEmail || d.professor?.email || "—"}
+                    </Badge>
+                    {(d.matchScore != null || d.professor?.matchScore != null) && (
+                      <Badge variant="secondary">
+                        Fit {d.matchScore ?? d.professor?.matchScore}/100
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
+                {d.reviewNotes && (
+                  <Alert>
+                    <AlertTitle>Reviewer notes</AlertTitle>
+                    <AlertDescription>{d.reviewNotes}</AlertDescription>
+                  </Alert>
+                )}
+                {d.professor?.matchReason && (
+                  <p className="text-xs text-muted-foreground">
+                    Why this professor: {d.professor.matchReason}
+                  </p>
+                )}
                 {d.professor?.recentPaper && (
                   <Alert>
                     <AlertTitle>Publication</AlertTitle>
@@ -220,6 +258,13 @@ export default function ApprovalsPage() {
                     <Check data-icon="inline-start" />
                   )}
                   Approve Instantly
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => act(d.id, "agent_review")}
+                  disabled={busyId === d.id}
+                >
+                  Agent review
                 </Button>
                 <Button
                   variant="outline"

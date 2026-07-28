@@ -36,6 +36,8 @@ type Professor = {
   labName: string | null;
   tags: string | null;
   emailVerified: boolean;
+  matchScore?: number | null;
+  matchReason?: string | null;
   drafts?: Array<{ id: string }>;
 };
 
@@ -99,7 +101,12 @@ export default function DirectoryPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Mining failed");
-      toast.success(`Mined ${data.mined} fresh leads`);
+      toast.success(
+        `Mined ${data.mined} leads` +
+          (data.targeting?.topics?.length
+            ? ` · topics: ${data.targeting.topics.slice(0, 2).join("; ")}`
+            : "")
+      );
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Mining unavailable offline");
@@ -145,7 +152,8 @@ export default function DirectoryPage() {
             Faculty Directory
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Search leads, then generate drafts using your onboarding profile
+            Search leads matched to your regions and research interests, then
+            draft with your onboarding profile.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -240,6 +248,9 @@ export default function DirectoryPage() {
                   </CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {p.matchScore != null && (
+                    <Badge variant="secondary">Fit {p.matchScore}</Badge>
+                  )}
                   {p.emailVerified && <Badge variant="secondary">Verified</Badge>}
                   {(p.drafts?.length || 0) > 0 && (
                     <Badge variant="outline">Pre-draft ready</Badge>
@@ -247,6 +258,11 @@ export default function DirectoryPage() {
                 </div>
               </CardHeader>
               <CardContent className="grid gap-2 sm:grid-cols-2">
+                {p.matchReason && (
+                  <div className="sm:col-span-2 text-xs text-muted-foreground">
+                    {p.matchReason}
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Email: </span>
                   {p.email || "—"}

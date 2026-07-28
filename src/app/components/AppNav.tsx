@@ -10,6 +10,7 @@ import {
   ListOrdered,
   UserRound,
   Mail,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -22,6 +23,7 @@ const links = [
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/queue", label: "Queue", icon: ListOrdered },
   { href: "/connect-inbox", label: "Inbox", icon: Mail },
+  { href: "/settings", label: "Settings", icon: Settings },
   { href: "/onboarding", label: "Profile", icon: UserRound },
 ];
 

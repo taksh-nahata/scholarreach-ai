@@ -22,13 +22,13 @@ export async function requireUser() {
 
   if (allowFallback) {
     const email =
-      process.env.DEFAULT_USER_EMAIL || "taksh.nahata37@gmail.com";
+      process.env.DEFAULT_USER_EMAIL || "dev@localhost.test";
     return prisma.user.upsert({
       where: { email },
       update: {},
       create: {
         email,
-        name: process.env.DEFAULT_USER_NAME || "Taksh Nahata",
+        name: process.env.DEFAULT_USER_NAME || "Dev User",
       },
     });
   }

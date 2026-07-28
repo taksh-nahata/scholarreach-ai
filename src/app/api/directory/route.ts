@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       include: {
         drafts: { where: { status: "pending" }, take: 1 },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ matchScore: "desc" }, { createdAt: "desc" }],
     });
 
     return NextResponse.json({ professors, count: professors.length });
