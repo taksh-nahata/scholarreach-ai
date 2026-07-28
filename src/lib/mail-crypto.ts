@@ -28,11 +28,11 @@ export function decryptSecret(payload: string): string {
 
 export const MAIL_PRESETS = {
   gmail_smtp: {
-    label: "Gmail (App Password)",
+    label: "Gmail SMTP (not recommended)",
     host: "smtp.gmail.com",
     port: 465,
     secure: true,
-    help: "Family Link / supervised accounts: create an App Password at myaccount.google.com/apppasswords (parent may need to allow it), or use Sign in with Google + Connect Gmail.",
+    help: "Google has restricted App Passwords / SMTP for many accounts. Prefer Platform sending (Resend).",
   },
   outlook_smtp: {
     label: "Outlook / Hotmail / Live",

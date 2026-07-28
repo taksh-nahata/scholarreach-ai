@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, Shield } from "lucide-react";
+import { Mail, Shield, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -33,22 +33,30 @@ function ConnectInboxInner() {
     mailProvider?: string | null;
     presets?: PresetMap;
   }>({});
-  const [preset, setPreset] = useState("gmail_smtp");
-  const [host, setHost] = useState("smtp.gmail.com");
-  const [port, setPort] = useState("465");
+  const [platform, setPlatform] = useState<{
+    configured?: boolean;
+    connected?: boolean;
+    replyTo?: string;
+    fromHint?: string | null;
+  }>({});
+  const [preset, setPreset] = useState("outlook_smtp");
+  const [host, setHost] = useState("smtp.office365.com");
+  const [port, setPort] = useState("587");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<"oauth" | "smtp" | null>(null);
+  const [busy, setBusy] = useState<"platform" | "oauth" | "smtp" | null>(null);
 
   async function refresh() {
-    const res = await fetch("/api/mail/smtp");
-    if (res.ok) {
-      const data = await res.json();
+    const [smtpRes, platRes] = await Promise.all([
+      fetch("/api/mail/smtp"),
+      fetch("/api/mail/platform"),
+    ]);
+    if (smtpRes.ok) {
+      const data = await smtpRes.json();
       setStatus(data);
-      if (data.presets?.[preset]) {
-        setHost(data.presets[preset].host || host);
-        setPort(String(data.presets[preset].port || port));
-      }
+    }
+    if (platRes.ok) {
+      setPlatform(await platRes.json());
     }
   }
 
@@ -59,7 +67,7 @@ function ConnectInboxInner() {
     }
     if (params.get("error")) {
       toast.error(
-        `Google connect failed (${params.get("error")}). Try App Password below — Family Link often blocks Gmail API scopes.`
+        `Google connect failed (${params.get("error")}). Use Platform sending instead — Gmail SMTP/App Passwords are unreliable.`
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,6 +80,25 @@ function ConnectInboxInner() {
       setPort(String(p.port));
     }
   }, [preset, status.presets]);
+
+  async function enablePlatform(enable: boolean) {
+    setBusy("platform");
+    try {
+      const res = await fetch("/api/mail/platform", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enable }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Platform mail failed");
+      toast.success(enable ? "Platform sending enabled" : "Platform sending off");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function connectGmailOAuth() {
     setBusy("oauth");
@@ -103,7 +130,7 @@ function ConnectInboxInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "SMTP connect failed");
-      toast.success("Inbox connected");
+      toast.success("SMTP connected");
       setPassword("");
       await refresh();
     } catch (err) {
@@ -113,23 +140,28 @@ function ConnectInboxInner() {
     }
   }
 
+  const ready = status.mailConnected || status.gmailConnected || platform.connected;
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <div>
         <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Connect inbox
+          Connect sending
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Gmail, Outlook, Yahoo, or school SMTP. Sending stays off until you connect.
+          Scalable path uses Resend (not Gmail SMTP / Apps Script). Replies still
+          go to your email.
         </p>
       </div>
 
-      {(status.mailConnected || status.gmailConnected) && (
+      {ready && (
         <Alert>
           <Shield className="size-4" />
-          <AlertTitle>Inbox connected</AlertTitle>
+          <AlertTitle>Sending ready</AlertTitle>
           <AlertDescription>
-            Provider: {status.mailProvider || "gmail"}{" "}
+            Provider:{" "}
+            {status.mailProvider ||
+              (platform.connected ? "platform" : "—")}{" "}
             <Badge variant="secondary" className="ml-2">
               ready
             </Badge>
@@ -139,15 +171,68 @@ function ConnectInboxInner() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-display text-xl">Gmail via Google</CardTitle>
+          <CardTitle className="font-display text-xl">
+            Platform sending (recommended)
+          </CardTitle>
           <CardDescription>
-            Opens Google consent for send permission. Family Link / supervised
-            accounts: if Google blocks this, use App Password below (same method
-            other apps use when OAuth scopes are restricted).
+            Uses Resend on a verified domain — thousands/day when you upgrade the
+            plan. Not capped by Gmail&apos;s ~100 Apps Script / personal SMTP
+            limits. Professors reply to {platform.replyTo || "your account email"}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {!platform.configured && (
+            <Alert>
+              <AlertTitle>Operator setup needed</AlertTitle>
+              <AlertDescription>
+                Add <code>RESEND_API_KEY</code> and <code>RESEND_FROM</code>{" "}
+                (verified domain) on Vercel. Free Resend tier works for testing;
+                paid/SES later for real volume.
+              </AlertDescription>
+            </Alert>
+          )}
+          {platform.fromHint && (
+            <p className="text-xs text-muted-foreground">
+              From: {platform.fromHint} · Reply-To: your login email
+            </p>
+          )}
+          {platform.connected ? (
+            <Button
+              variant="outline"
+              onClick={() => enablePlatform(false)}
+              disabled={busy !== null}
+            >
+              {busy === "platform" ? <Spinner data-icon="inline-start" /> : null}
+              Disable platform sending
+            </Button>
+          ) : (
+            <Button onClick={() => enablePlatform(true)} disabled={busy !== null}>
+              {busy === "platform" ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <Zap data-icon="inline-start" />
+              )}
+              Enable platform sending
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display text-xl">Gmail OAuth (optional)</CardTitle>
+          <CardDescription>
+            Sends from your Gmail via API. Family Link often blocks this, and
+            personal Gmail still has low daily caps — prefer Platform sending for
+            scale.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={connectGmailOAuth} disabled={busy !== null}>
+          <Button
+            variant="outline"
+            onClick={connectGmailOAuth}
+            disabled={busy !== null}
+          >
             {busy === "oauth" ? (
               <Spinner data-icon="inline-start" />
             ) : (
@@ -161,10 +246,10 @@ function ConnectInboxInner() {
       <Card>
         <CardHeader>
           <CardTitle className="font-display text-xl">
-            App password / SMTP
+            Outlook / Yahoo / school SMTP
           </CardTitle>
           <CardDescription>
-            Works for Gmail (Family Link), Outlook, Yahoo, and custom school mail.
+            For non-Gmail mailboxes. Gmail App Passwords are no longer reliable.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -176,14 +261,15 @@ function ConnectInboxInner() {
                 value={preset}
                 onChange={(e) => setPreset(e.target.value)}
               >
-                {Object.entries(status.presets || {}).map(([id, p]) => (
-                  <option key={id} value={id}>
-                    {p.label}
-                  </option>
-                ))}
+                {Object.entries(status.presets || {})
+                  .filter(([id]) => id !== "gmail_smtp")
+                  .map(([id, p]) => (
+                    <option key={id} value={id}>
+                      {p.label}
+                    </option>
+                  ))}
                 {!status.presets && (
                   <>
-                    <option value="gmail_smtp">Gmail (App Password)</option>
                     <option value="outlook_smtp">Outlook</option>
                     <option value="yahoo_smtp">Yahoo</option>
                     <option value="custom_smtp">Custom SMTP</option>
@@ -192,7 +278,7 @@ function ConnectInboxInner() {
               </select>
               <FieldDescription>
                 {status.presets?.[preset]?.help ||
-                  "Create an app password in your mail provider’s security settings."}
+                  "Use your provider’s SMTP settings."}
               </FieldDescription>
             </Field>
             <FieldGroup>
@@ -210,11 +296,10 @@ function ConnectInboxInner() {
                   id="user"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="you@gmail.com"
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="pass">App password</FieldLabel>
+                <FieldLabel htmlFor="pass">Password / app password</FieldLabel>
                 <Input
                   id="pass"
                   type="password"

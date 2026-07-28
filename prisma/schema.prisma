@@ -17,13 +17,13 @@ model User {
   googleRefreshToken String?
   googleTokenExpiry  DateTime?
   gmailConnected     Boolean  @default(false)
-  // Multi-provider inbox (gmail | outlook | yahoo | smtp)
-  mailProvider       String?  // gmail | outlook | yahoo | smtp
+  // Multi-provider: platform (Resend) | gmail | outlook | yahoo | smtp
+  mailProvider       String?
   mailConnected      Boolean  @default(false)
   smtpHost           String?
   smtpPort           Int?
   smtpUser           String?
-  smtpPassEnc        String?  // encrypted app password / SMTP secret
+  smtpPassEnc        String?  // encrypted SMTP secret (non-Gmail providers)
   microsoftAccessToken  String?
   microsoftRefreshToken String?
   microsoftTokenExpiry  DateTime?

@@ -1,10 +1,15 @@
 /**
- * Send mail via connected provider: Gmail OAuth, Microsoft Graph, or SMTP.
+ * Send mail via connected provider.
+ * Preferred scalable path: platform Resend (no Gmail SMTP / Apps Script caps).
  */
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/mail-crypto";
 import { sendGmailForUser } from "@/services/gmail_oauth_service";
+import {
+  isPlatformMailConfigured,
+  sendViaResend,
+} from "@/services/platform_mail";
 
 export async function sendMailForUser(
   userId: string,
@@ -19,16 +24,29 @@ export async function sendMailForUser(
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
-  // Prefer Gmail OAuth when connected
+  const replyTo = user.email;
+  const fromName = user.name || undefined;
+
+  // Platform transactional mail (scalable) — default when user opted in
+  if (
+    user.mailProvider === "platform" &&
+    user.mailConnected &&
+    isPlatformMailConfigured()
+  ) {
+    return sendViaResend({
+      ...opts,
+      replyTo,
+      fromName,
+    });
+  }
+
+  // Gmail API OAuth (personal Gmail daily caps still apply)
   if (user.gmailConnected && (user.googleRefreshToken || user.googleAccessToken)) {
     return sendGmailForUser(userId, opts);
   }
 
-  // Microsoft Graph send
-  if (
-    user.mailProvider === "outlook" &&
-    user.microsoftAccessToken
-  ) {
+  // Microsoft Graph
+  if (user.mailProvider === "outlook" && user.microsoftAccessToken) {
     const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
       method: "POST",
       headers: {
@@ -59,7 +77,7 @@ export async function sendMailForUser(
     return { id: `outlook-${Date.now()}` };
   }
 
-  // SMTP (Gmail app password / Yahoo / Outlook SMTP / custom)
+  // SMTP for Outlook/Yahoo/school (not recommended for Gmail)
   if (user.smtpHost && user.smtpUser && user.smtpPassEnc) {
     const pass = decryptSecret(user.smtpPassEnc);
     const port = user.smtpPort || 587;
@@ -76,11 +94,17 @@ export async function sendMailForUser(
       subject: opts.subject,
       text: opts.body,
       html: opts.htmlBody || undefined,
+      replyTo,
     });
     return { id: info.messageId };
   }
 
+  // Fallback: if platform is configured and user somehow has mailConnected
+  if (user.mailConnected && isPlatformMailConfigured()) {
+    return sendViaResend({ ...opts, replyTo, fromName });
+  }
+
   throw new Error(
-    "No inbox connected. Open Connect Inbox to link Gmail, Outlook, Yahoo, or SMTP."
+    "No send path connected. Open Connect Inbox → enable Platform sending (Resend)."
   );
 }

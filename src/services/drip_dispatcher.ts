@@ -4,10 +4,18 @@
  */
 import { prisma } from "@/lib/prisma";
 import { sendMailForUser } from "./mail_sender";
+import { isPlatformMailConfigured } from "./platform_mail";
 
 async function isMailReady(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return false;
+  if (
+    user.mailProvider === "platform" &&
+    user.mailConnected &&
+    isPlatformMailConfigured()
+  ) {
+    return true;
+  }
   if (user.gmailConnected && (user.googleAccessToken || user.googleRefreshToken)) {
     return true;
   }
@@ -159,7 +167,7 @@ export class EnterpriseDripDispatcher {
           sentSuccess = true;
           gmailMessageId = res.id || undefined;
         } else {
-          sendError = "No inbox connected (Gmail / Outlook / Yahoo / SMTP).";
+          sendError = "No send path connected (Platform Resend / Outlook / SMTP).";
         }
       } catch (err) {
         sendError = err instanceof Error ? err.message : String(err);

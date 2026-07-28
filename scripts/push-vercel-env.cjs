@@ -75,6 +75,8 @@ const vars = {
   SEARCH_DAILY_BUDGET_FIRECRAWL: local.SEARCH_DAILY_BUDGET_FIRECRAWL || "20",
   SEARCH_DAILY_BUDGET_LLM: local.SEARCH_DAILY_BUDGET_LLM || "80",
   MIN_MATCH_SCORE: local.MIN_MATCH_SCORE || "40",
+  RESEND_API_KEY: local.RESEND_API_KEY || "",
+  RESEND_FROM: local.RESEND_FROM || "",
 };
 
 function upsert(key, value, envName) {
