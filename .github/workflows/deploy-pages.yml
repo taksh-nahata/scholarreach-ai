@@ -1,0 +1,61 @@
+name: Deploy ScholarReach AI to GitHub Pages
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Prepare SQLite + seed + demo
+        run: |
+          npx prisma generate
+          npx prisma db push
+          # Seed from bundled public demo if parent data missing
+          npm run demo:export || true
+        env:
+          DATABASE_URL: file:./dev.db
+          DEFAULT_USER_EMAIL: takshnahata37@gmail.com
+      - name: Ensure demo data exists
+        run: |
+          if [ ! -f public/demo-data.json ]; then
+            node -e "const fs=require('fs');fs.mkdirSync('public',{recursive:true});fs.writeFileSync('public/demo-data.json', JSON.stringify({generatedAt:new Date().toISOString(),user:{email:'takshnahata37@gmail.com',name:'Taksh Nahata',gmailConnected:false},metrics:{totalLeads:239,pendingApprovals:12,scheduledSends:60,emailsDelivered:82},professors:[],drafts:[],queue:[]},null,2))"
+          fi
+      - name: Static export
+        run: npm run build:gh-pages
+        env:
+          DATABASE_URL: file:./dev.db
+          STATIC_EXPORT: "true"
+          BASE_PATH: /${{ github.event.repository.name }}
+          DEFAULT_USER_EMAIL: takshnahata37@gmail.com
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,101 +1,179 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  ArrowRight,
+  Clock,
+  Mail,
+  Search,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
+import { AcademicWindowSeal } from "@/components/AcademicWindowSeal";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+
+const features = [
+  {
+    icon: Search,
+    title: "Publication-aware personalization",
+    desc: "Mine recent lab papers and tailor every inquiry to real research, not generic templates.",
+  },
+  {
+    icon: Mail,
+    title: "One-click Gmail OAuth",
+    desc: "Connect Gmail with official OAuth2 — no Apps Script, no app passwords.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Verified email unscrambler",
+    desc: "Qwen 3.6 unscrambles obfuscated faculty emails and extracts assistant CCs.",
+  },
+  {
+    icon: Clock,
+    title: "Academic 8 AM scheduler",
+    desc: "500/hr drip physics, Tue–Thu 8–9 AM local, with multi-day rollover.",
+  },
+];
+
+export default function LandingPage() {
+  const reduce = useReducedMotion();
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <main className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 desk-grid opacity-50" />
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+        <div className="flex items-center gap-2 font-semibold">
+          <span className="wax-seal flex size-9 items-center justify-center rounded-xl text-primary-foreground">
+            <Sparkles className="size-4" />
+          </span>
+          <span className="font-display text-lg">
+            ScholarReach <span className="text-primary">AI</span>
+          </span>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+          >
+            Dashboard
+          </Link>
+          <Link href="/login" className={cn(buttonVariants({ size: "sm" }))}>
+            Get Started Free
+          </Link>
+        </div>
+      </header>
+
+      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-6 pb-16 pt-10 lg:grid-cols-2 lg:pt-16">
+        <div>
+          <Badge variant="secondary" className="mb-5">
+            Free for students · Research outreach autopilot
+          </Badge>
+          <motion.h1
+            className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-[3.4rem] lg:leading-[1.05]"
+            initial={reduce ? false : { opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            Land university research positions on autopilot.
+          </motion.h1>
+          <motion.p
+            className="mt-5 max-w-xl text-base text-muted-foreground sm:text-lg"
+            initial={reduce ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.08 }}
+          >
+            Discover R1 & global faculty, write publication-aware inquiry emails,
+            verify contacts with live AI scraping, and dispatch via Gmail during
+            the morning academic window.
+          </motion.p>
+          <motion.div
+            className="mt-8 flex flex-wrap items-center gap-3"
+            initial={reduce ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.16 }}
+          >
+            <Link href="/login" className={cn(buttonVariants({ size: "lg" }))}>
+              Get Started Free
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+            <Link
+              href="/dashboard"
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
+            >
+              Open Dashboard
+            </Link>
+          </motion.div>
+        </div>
+
+        <AcademicWindowSeal />
+      </section>
+
+      <Separator className="mx-auto max-w-6xl" />
+
+      <section className="relative z-10 mx-auto grid max-w-6xl gap-4 px-6 py-16 sm:grid-cols-2 lg:grid-cols-4">
+        {features.map(({ icon: Icon, title, desc }, i) => (
+          <motion.div
+            key={title}
+            initial={reduce ? false : { opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 0.45, delay: i * 0.06 }}
+          >
+            <Card className="h-full">
+              <CardHeader>
+                <div className="mb-1 flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <Icon className="size-4" />
+                </div>
+                <CardTitle className="font-display text-base">{title}</CardTitle>
+                <CardDescription>{desc}</CardDescription>
+              </CardHeader>
+            </Card>
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="relative z-10 mx-auto max-w-6xl px-6 pb-24">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-2xl">
+              Built for the cold-email that still feels hand-written.
+            </CardTitle>
+            <CardDescription>
+              ScholarReach keeps your drafts reviewable, verifies emails before
+              send, and only fires during Tue–Thu 8–9 AM when faculty inboxes
+              open.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Link href="/approvals" className={cn(buttonVariants())}>
+              Review drafts
+            </Link>
+            <Link
+              href="/directory"
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              Browse faculty directory
+            </Link>
+          </CardContent>
+        </Card>
+      </section>
+
+      <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
+        © {new Date().getFullYear()} ScholarReach AI · Free for students seeking
+        research roles
       </footer>
-    </div>
+    </main>
   );
 }

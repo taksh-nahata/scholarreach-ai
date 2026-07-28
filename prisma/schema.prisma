@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String?
+  image              String?
+  googleAccessToken  String?
+  googleRefreshToken String?
+  googleTokenExpiry  DateTime?
+  gmailConnected     Boolean  @default(false)
+  dailySentCount     Int      @default(0)
+  lastSendResetDate  String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  professors      Professor[]
+  drafts          Draft[]
+  scheduledEmails ScheduledEmail[]
+  sentHistory     SentHistory[]
+  accounts        Account[]
+  sessions        Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Professor {
+  id                 String   @id @default(cuid())
+  legacyId           String?
+  userId             String
+  name               String
+  title              String?
+  email              String?
+  secondaryEmails    String?  // JSON array
+  ccEmails           String?  // JSON array
+  university         String
+  department         String?
+  labName            String?
+  researchFocus      String?
+  recentPaper        String?
+  locationMode       String?  @default("Remote")
+  tags               String?  // JSON array
+  homepageUrl        String?
+  emailVerified      Boolean  @default(false)
+  verificationNotes  String?
+  specialInstructions String?
+  dedupeKey          String   // normalized name|university
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drafts          Draft[]
+  scheduledEmails ScheduledEmail[]
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, university])
+  @@index([userId, email])
+}
+
+model Draft {
+  id             String   @id @default(cuid())
+  legacyId       String?
+  userId         String
+  professorId    String?
+  subject        String
+  body           String
+  htmlBody       String?
+  recipientEmail String?
+  ccEmails       String?
+  status         String   @default("pending") // pending | approved | rejected | scheduled
+  providerUsed   String?
+  isFallback     Boolean  @default(false)
+  specialNotes   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  professor Professor? @relation(fields: [professorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+}
+
+model ScheduledEmail {
+  id            String    @id @default(cuid())
+  legacyId      String?
+  userId        String
+  professorId   String?
+  professorName String?
+  university    String?
+  toEmail       String
+  ccEmails      String?
+  subject       String
+  body          String
+  htmlBody      String?
+  scheduledIso  DateTime
+  scheduledTime String?
+  status        String    @default("scheduled") // scheduled | sent | failed | cancelled
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  professor Professor? @relation(fields: [professorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, scheduledIso])
+}
+
+model SentHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  toEmail       String
+  professorName String?
+  university    String?
+  subject       String
+  gmailMessageId String?
+  sentAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, toEmail])
+}

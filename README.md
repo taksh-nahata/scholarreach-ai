@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ScholarReach AI
 
-## Getting Started
+Commercial student cold-email SaaS — discover R1 faculty, verify emails, approve drafts, and drip-dispatch via Gmail OAuth during the Tue–Thu 8–9 AM academic window.
 
-First, run the development server:
+## Design
+
+**Dawn Correspondence Desk** — ink navy + sealing-wax copper, Fraunces display + Plus Jakarta Sans, shadcn/ui (base-nova) + Framer Motion. Signature UI: the animated **8 AM academic window seal**.
+
+## Local (full API + Prisma)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run db:setup
+npm run demo:export
+npm run drip:dry-run
+npm run dev   # http://localhost:3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Static GitHub Pages build
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build:gh-pages   # writes /out (basePath /scholarreach-ai)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploy to GitHub Pages
 
-## Learn More
+```bash
+gh auth login
+gh repo create scholarreach-ai --public --source=. --remote=origin --push
+gh api -X PUT repos/{owner}/scholarreach-ai/pages -f build_type=workflow
+```
 
-To learn more about Next.js, take a look at the following resources:
+Or push to `main`/`master` — `.github/workflows/deploy-pages.yml` builds and publishes automatically.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Site URL: `https://<you>.github.io/scholarreach-ai/`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Root professor_outreach automation files are untouched; this app lives in `saas_platform/`.
+- GitHub Pages hosts the **static demo** (seeded snapshot). Live Gmail/mining APIs run via `npm run dev`.
