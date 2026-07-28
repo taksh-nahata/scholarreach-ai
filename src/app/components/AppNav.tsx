@@ -9,6 +9,7 @@ import {
   CheckSquare,
   ListOrdered,
   UserRound,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -20,6 +21,7 @@ const links = [
   { href: "/directory", label: "Directory", icon: Users },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/queue", label: "Queue", icon: ListOrdered },
+  { href: "/connect-inbox", label: "Inbox", icon: Mail },
   { href: "/onboarding", label: "Profile", icon: UserRound },
 ];
 
@@ -81,7 +83,7 @@ export function AppNav({
               variant={connected ? "secondary" : "outline"}
               className="hidden max-w-[220px] truncate sm:inline-flex"
             >
-              {connected ? `Gmail · ${displayEmail}` : displayEmail}
+              {connected ? `Inbox · ${displayEmail}` : displayEmail}
             </Badge>
           )}
           <button

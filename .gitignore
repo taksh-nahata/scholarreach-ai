@@ -48,6 +48,8 @@ next-env.d.ts
 /src/generated/prisma
 
 .neon-secret.tmp
+.neon-new-url.tmp
+scripts/git-secret-replacements.txt
 !.env.example
 .agents/
 .claude/

@@ -174,12 +174,12 @@ export default function DashboardPage() {
 
       {!gmailConnected && (
         <Alert>
-          <AlertTitle>Connect Gmail to unlock live sending</AlertTitle>
+          <AlertTitle>Connect an inbox to unlock live sending</AlertTitle>
           <AlertDescription>
-            Mining and approvals work now. Dispatch stays dry-run until Gmail
-            OAuth is connected and dry-run is disabled.{" "}
+            Mining and approvals work now. Dispatch stays dry-run until Gmail,
+            Outlook, Yahoo, or SMTP is connected and dry-run is disabled.{" "}
             <Link
-              href="/login"
+              href="/connect-inbox"
               className="text-primary underline-offset-4 hover:underline"
             >
               Connect inbox
@@ -267,10 +267,10 @@ export default function DashboardPage() {
               Open full outreach queue
             </Link>
             <Link
-              href="/login"
+              href="/connect-inbox"
               className={cn(buttonVariants({ variant: "ghost" }), "justify-start")}
             >
-              {gmailConnected ? "Manage account" : "Connect Gmail"}
+              {gmailConnected ? "Manage inbox" : "Connect inbox"}
             </Link>
           </CardContent>
         </Card>

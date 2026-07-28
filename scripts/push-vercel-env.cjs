@@ -54,10 +54,12 @@ const vars = {
   DEFAULT_USER_NAME: local.DEFAULT_USER_NAME || "Taksh Nahata",
   // Fail closed in production — never auto-login as the owner
   ALLOW_DEFAULT_USER: "false",
-  WORKSPACE_ACCESS_CODE: local.WORKSPACE_ACCESS_CODE || "",
   GOOGLE_CLIENT_ID: local.GOOGLE_CLIENT_ID || "",
   GOOGLE_CLIENT_SECRET: local.GOOGLE_CLIENT_SECRET || "",
   GOOGLE_REDIRECT_URI: `${liveUrl}/api/auth/callback/google`,
+  AZURE_AD_CLIENT_ID: local.AZURE_AD_CLIENT_ID || "",
+  AZURE_AD_CLIENT_SECRET: local.AZURE_AD_CLIENT_SECRET || "",
+  AZURE_AD_TENANT_ID: local.AZURE_AD_TENANT_ID || "common",
   PROVOCATIVE_BASE_URL: local.PROVOCATIVE_BASE_URL || "",
   PROVOCATIVE_API_KEY: local.PROVOCATIVE_API_KEY || "",
   PRIMARY_MODEL: local.PRIMARY_MODEL || "qwen3.6-35b",
@@ -65,7 +67,7 @@ const vars = {
   TAVILY_API_KEY: local.TAVILY_API_KEY || "",
   FIRECRAWL_API_KEY: local.FIRECRAWL_API_KEY || "",
   DAILY_SEND_CAP: local.DAILY_SEND_CAP || "500",
-  // Keep sends free/safe until Gmail OAuth is intentionally enabled
+  // Keep sends free/safe until inbox connect is intentionally enabled
   DRIP_DRY_RUN: "true",
   NEXT_PUBLIC_LIVE_APP_URL: liveUrl,
 };

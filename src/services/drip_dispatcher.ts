@@ -3,7 +3,18 @@
  * Window: Tue–Thu 8:00–9:00 AM local. 5–9s jitter. Cap 500/day with rollover.
  */
 import { prisma } from "@/lib/prisma";
-import { sendGmailForUser, isUserGmailConnected } from "./gmail_oauth_service";
+import { sendMailForUser } from "./mail_sender";
+
+async function isMailReady(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return false;
+  if (user.gmailConnected && (user.googleAccessToken || user.googleRefreshToken)) {
+    return true;
+  }
+  if (user.mailConnected && user.smtpPassEnc && user.smtpHost) return true;
+  if (user.mailProvider === "outlook" && user.microsoftAccessToken) return true;
+  return false;
+}
 
 export class EnterpriseDripDispatcher {
   isProcessing = false;
@@ -137,8 +148,8 @@ export class EnterpriseDripDispatcher {
           console.log(`[DripDispatcher] DRY RUN — would send to ${item.toEmail}`);
           sentSuccess = true;
           gmailMessageId = `dryrun_${Date.now()}`;
-        } else if (await isUserGmailConnected(item.userId)) {
-          const res = await sendGmailForUser(item.userId, {
+        } else if (await isMailReady(item.userId)) {
+          const res = await sendMailForUser(item.userId, {
             to: item.toEmail,
             cc: item.ccEmails || undefined,
             subject: item.subject,
@@ -148,7 +159,7 @@ export class EnterpriseDripDispatcher {
           sentSuccess = true;
           gmailMessageId = res.id || undefined;
         } else {
-          sendError = "Gmail OAuth2 not authorized.";
+          sendError = "No inbox connected (Gmail / Outlook / Yahoo / SMTP).";
         }
       } catch (err) {
         sendError = err instanceof Error ? err.message : String(err);

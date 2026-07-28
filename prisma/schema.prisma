@@ -12,10 +12,21 @@ model User {
   email              String   @unique
   name               String?
   image              String?
+  passwordHash       String?
   googleAccessToken  String?
   googleRefreshToken String?
   googleTokenExpiry  DateTime?
   gmailConnected     Boolean  @default(false)
+  // Multi-provider inbox (gmail | outlook | yahoo | smtp)
+  mailProvider       String?  // gmail | outlook | yahoo | smtp
+  mailConnected      Boolean  @default(false)
+  smtpHost           String?
+  smtpPort           Int?
+  smtpUser           String?
+  smtpPassEnc        String?  // encrypted app password / SMTP secret
+  microsoftAccessToken  String?
+  microsoftRefreshToken String?
+  microsoftTokenExpiry  DateTime?
   dailySentCount     Int      @default(0)
   lastSendResetDate  String?
   onboardingComplete Boolean  @default(false)

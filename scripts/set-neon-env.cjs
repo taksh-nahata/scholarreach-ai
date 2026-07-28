@@ -38,15 +38,8 @@ if (!/^NEXTAUTH_SECRET=/m.test(e) || /NEXTAUTH_SECRET=""/.test(e)) {
 set("NEXT_PUBLIC_LIVE_APP_URL", "https://scholarreach-ai.vercel.app");
 set("ALLOW_DEFAULT_USER", "false");
 set("DRIP_DRY_RUN", "true");
-if (!/^WORKSPACE_ACCESS_CODE=/m.test(e)) {
-  set(
-    "WORKSPACE_ACCESS_CODE",
-    crypto.randomBytes(9).toString("base64url").slice(0, 12)
-  );
-}
+// Remove legacy access-code auth (replaced by password + OAuth)
+e = e.replace(/^WORKSPACE_ACCESS_CODE=.*$/gm, "");
 
 fs.writeFileSync(envPath, e.trim() + "\n");
 console.log("Updated .env (ALLOW_DEFAULT_USER=false, DRIP_DRY_RUN=true)");
-console.log(
-  "Workspace access code is in .env as WORKSPACE_ACCESS_CODE — keep it private."
-);

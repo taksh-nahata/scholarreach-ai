@@ -77,8 +77,8 @@ const pricing = [
 
 export default function LandingPage() {
   const staticDemo = isStaticExport();
-  const primaryCtaHref = staticDemo ? LIVE_APP_URL : appHref("/login");
-  const primaryCtaLabel = staticDemo ? "Open the live app" : "Start free";
+  const primaryCtaHref = staticDemo ? `${LIVE_APP_URL}/signup` : appHref("/signup");
+  const primaryCtaLabel = staticDemo ? "Open the live app" : "Create free account";
 
   return (
     <main className="min-h-screen">
@@ -91,17 +91,18 @@ export default function LandingPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href={staticDemo ? `${LIVE_APP_URL}/dashboard` : "/dashboard"}
+            href={staticDemo ? `${LIVE_APP_URL}/login` : "/login"}
             className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+            {...(staticDemo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
           >
-            Product
+            Sign in
           </Link>
           <Link
-            href={primaryCtaHref}
+            href={staticDemo ? `${LIVE_APP_URL}/signup` : "/signup"}
             className={cn(buttonVariants({ size: "sm" }))}
             {...(staticDemo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
           >
-            {primaryCtaLabel}
+            {staticDemo ? "Open the live app" : "Sign up"}
           </Link>
         </div>
       </header>

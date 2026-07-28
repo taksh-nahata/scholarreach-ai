@@ -1,5 +1,4 @@
 const fs = require("fs");
-const crypto = require("crypto");
 const path = require("path");
 
 const envPath = path.join(__dirname, "..", ".env");
@@ -15,17 +14,13 @@ const set = (key, val) => {
 
 set("ALLOW_DEFAULT_USER", "false");
 set("DRIP_DRY_RUN", "true");
+e = e.replace(/^WORKSPACE_ACCESS_CODE=.*$/gm, "");
 
-let codeMatch = e.match(/^WORKSPACE_ACCESS_CODE="?([^\r\n"]+)/m);
-if (!codeMatch || !codeMatch[1]) {
-  const code = crypto.randomBytes(9).toString("base64url").slice(0, 12);
-  set("WORKSPACE_ACCESS_CODE", code);
-  codeMatch = [null, code];
-}
-
-fs.writeFileSync(envPath, e);
-console.log(JSON.stringify({
-  ALLOW_DEFAULT_USER: "false",
-  DRIP_DRY_RUN: "true",
-  WORKSPACE_ACCESS_CODE: codeMatch[1],
-}));
+fs.writeFileSync(envPath, e.trim() + "\n");
+console.log(
+  JSON.stringify({
+    ALLOW_DEFAULT_USER: "false",
+    DRIP_DRY_RUN: "true",
+    note: "Access codes removed — use /login password or Google OAuth",
+  })
+);
