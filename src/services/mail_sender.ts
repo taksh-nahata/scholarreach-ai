@@ -1,6 +1,6 @@
 /**
- * Send mail via connected provider.
- * Preferred scalable path: platform Resend (no Gmail SMTP / Apps Script caps).
+ * Send from the student's real Gmail when OAuth is connected (Apps Script–style
+ * permission, without Apps Script). Other providers are fallbacks only.
  */
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
@@ -24,28 +24,12 @@ export async function sendMailForUser(
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
-  const replyTo = user.email;
-  const fromName = user.name || undefined;
-
-  // Platform transactional mail (scalable) — default when user opted in
-  if (
-    user.mailProvider === "platform" &&
-    user.mailConnected &&
-    isPlatformMailConfigured()
-  ) {
-    return sendViaResend({
-      ...opts,
-      replyTo,
-      fromName,
-    });
-  }
-
-  // Gmail API OAuth (personal Gmail daily caps still apply)
+  // 1) Student's Gmail via OAuth (personal From: address)
   if (user.gmailConnected && (user.googleRefreshToken || user.googleAccessToken)) {
     return sendGmailForUser(userId, opts);
   }
 
-  // Microsoft Graph
+  // 2) Outlook Graph
   if (user.mailProvider === "outlook" && user.microsoftAccessToken) {
     const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
       method: "POST",
@@ -77,7 +61,7 @@ export async function sendMailForUser(
     return { id: `outlook-${Date.now()}` };
   }
 
-  // SMTP for Outlook/Yahoo/school (not recommended for Gmail)
+  // 3) Non-Gmail SMTP
   if (user.smtpHost && user.smtpUser && user.smtpPassEnc) {
     const pass = decryptSecret(user.smtpPassEnc);
     const port = user.smtpPort || 587;
@@ -94,17 +78,25 @@ export async function sendMailForUser(
       subject: opts.subject,
       text: opts.body,
       html: opts.htmlBody || undefined,
-      replyTo,
+      replyTo: user.email,
     });
     return { id: info.messageId };
   }
 
-  // Fallback: if platform is configured and user somehow has mailConnected
-  if (user.mailConnected && isPlatformMailConfigured()) {
-    return sendViaResend({ ...opts, replyTo, fromName });
+  // 4) Optional platform mail (only if user explicitly enabled it)
+  if (
+    user.mailProvider === "platform" &&
+    user.mailConnected &&
+    isPlatformMailConfigured()
+  ) {
+    return sendViaResend({
+      ...opts,
+      replyTo: user.email,
+      fromName: user.name || undefined,
+    });
   }
 
   throw new Error(
-    "No send path connected. Open Connect Inbox → enable Platform sending (Resend)."
+    "Gmail not connected. Open Connect Inbox → Request Gmail access (parent may need to approve)."
   );
 }

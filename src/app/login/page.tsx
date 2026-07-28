@@ -26,39 +26,29 @@ function LoginForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<"pass" | "google" | "ms" | null>(null);
-  const [providers, setProviders] = useState({ google: false, microsoft: false });
+  const [busy, setBusy] = useState<"pass" | "google" | null>(null);
+  const [providers, setProviders] = useState({ google: false });
   const [familyLinkBlocked, setFamilyLinkBlocked] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/providers-status")
       .then((r) => r.json())
-      .then((d) =>
-        setProviders({ google: !!d.google, microsoft: !!d.microsoft })
-      )
+      .then((d) => setProviders({ google: !!d.google }))
       .catch(() => undefined);
 
     const err = (params.get("error") || "").toLowerCase();
-    const msg = (params.get("error_description") || params.get("message") || "").toLowerCase();
-    const family =
-      err.includes("family") ||
-      msg.includes("family link") ||
-      msg.includes("managed") ||
-      err === "accessdenied" ||
-      err === "access_denied" ||
-      err === "oauthsignin" ||
-      err === "oauthcallback" ||
-      err === "oauthcreateaccount" ||
-      err === "callback";
-
     if (params.get("error")) {
-      if (family || msg.includes("family")) {
+      if (
+        err.includes("access") ||
+        err.includes("oauth") ||
+        err.includes("callback")
+      ) {
         setFamilyLinkBlocked(true);
         toast.error(
-          "Google blocked this Family Link account for third-party apps. Use email + password below."
+          "Google sign-in blocked or denied. Use password, or fix Family Link + OAuth setup."
         );
       } else {
-        toast.error("Google sign-in failed. Use email + password instead.");
+        toast.error("Sign-in failed. Try email + password.");
       }
     }
   }, [params]);
@@ -89,9 +79,7 @@ function LoginForm() {
         password,
         redirect: false,
       });
-      if (result?.error) {
-        throw new Error("Wrong email or password.");
-      }
+      if (result?.error) throw new Error("Wrong email or password.");
       toast.success("Signed in");
       await afterAuth();
     } catch (err) {
@@ -105,32 +93,16 @@ function LoginForm() {
     setBusy("google");
     try {
       if (!providers.google) {
-        toast.error("Google Sign-In is not configured. Use email + password.");
+        toast.error(
+          "Google Sign-In isn’t configured yet (missing OAuth keys). Use password."
+        );
         return;
       }
-      toast.message(
-        "Family Link often blocks new apps. If Google says no, use password login."
-      );
       const { signIn } = await import("next-auth/react");
+      // Basic info only — matches Family Link “apps that only request basic info”
       await signIn("google", { callbackUrl: "/dashboard" });
     } catch (err) {
-      setFamilyLinkBlocked(true);
       toast.error(err instanceof Error ? err.message : "Google sign-in failed");
-      setBusy(null);
-    }
-  }
-
-  async function onMicrosoft() {
-    setBusy("ms");
-    try {
-      if (!providers.microsoft) {
-        toast.message("Use Connect Inbox after login for Outlook SMTP.");
-        return;
-      }
-      const { signIn } = await import("next-auth/react");
-      await signIn("azure-ad", { callbackUrl: "/dashboard" });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Microsoft sign-in failed");
       setBusy(null);
     }
   }
@@ -146,52 +118,21 @@ function LoginForm() {
         </Link>
         <CardTitle className="font-display text-2xl">Sign in</CardTitle>
         <CardDescription>
-          Family Link Google accounts should use email + password. Google Sign-In
-          is optional and often blocked for supervised accounts.
+          Password always works. Google login only asks for basic info (name +
+          email). Gmail sending is a separate step after login.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Alert variant={familyLinkBlocked ? "destructive" : "default"}>
-          <AlertTitle>
-            {familyLinkBlocked
-              ? "Google hard-blocked Family Link (not a ScholarReach bug)"
-              : "Family Link / supervised Google account?"}
-          </AlertTitle>
-          <AlertDescription className="flex flex-col gap-2">
-            <span>
-              Google decides whether to show <strong>parent approval</strong> or
-              the &quot;not allowed to sign in here&quot; wall. We cannot draw a
-              parent-picker ourselves — that screen is Google&apos;s.
-            </span>
-            <span>
-              To unlock parent approval (same as other apps), a parent must:
-            </span>
-            <ol className="list-decimal space-y-1 pl-5 text-sm">
-              <li>
-                Open{" "}
-                <a
-                  className="underline"
-                  href="https://g.co/yourfamily"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  g.co/yourfamily
-                </a>{" "}
-                or the Family Link app → your account
-              </li>
-              <li>
-                <strong>Controls → Account settings → Controls for third-party
-                apps</strong> → allow third-party access (not blocked)
-              </li>
-              <li>
-                Retry Google. Google should then ask the parent to approve (password
-                / Family Link notification) — not show the hard block.
-              </li>
-            </ol>
-            <span>
-              Until that works, sign in with <strong>email + password</strong>{" "}
-              below (same Gmail address). That always works.
-            </span>
+          <AlertTitle>Family Link</AlertTitle>
+          <AlertDescription className="text-sm">
+            Your dad’s setting “apps that only request basic info” is exactly
+            what Google login uses. For sending mail, after login go to{" "}
+            <Link href="/connect-inbox" className="underline">
+              Connect Gmail
+            </Link>{" "}
+            — that asks for Gmail access and he can approve when it says Ask
+            every time.
           </AlertDescription>
         </Alert>
 
@@ -232,7 +173,7 @@ function LoginForm() {
 
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <Separator className="flex-1" />
-          optional
+          or
           <Separator className="flex-1" />
         </div>
 
@@ -243,31 +184,26 @@ function LoginForm() {
           disabled={busy !== null || !providers.google}
         >
           {busy === "google" ? <Spinner data-icon="inline-start" /> : null}
-          Continue with Google
+          Continue with Google (basic info)
         </Button>
-        {providers.microsoft && (
-          <Button
-            size="lg"
-            variant="outline"
-            onClick={onMicrosoft}
-            disabled={busy !== null}
-          >
-            {busy === "ms" ? <Spinner data-icon="inline-start" /> : null}
-            Continue with Microsoft
-          </Button>
-        )}
         {!providers.google && (
           <p className="text-xs text-muted-foreground">
-            Google button is off until OAuth keys are added. Password login works
-            now.
+            Google button is off until OAuth client keys are added on the
+            server.
           </p>
         )}
       </CardContent>
       <CardFooter className="justify-between text-sm">
-        <Link href="/signup" className="text-primary underline-offset-4 hover:underline">
+        <Link
+          href="/signup"
+          className="text-primary underline-offset-4 hover:underline"
+        >
           Create an account
         </Link>
-        <Link href="/" className={cn(buttonVariants({ variant: "link", size: "xs" }))}>
+        <Link
+          href="/"
+          className={cn(buttonVariants({ variant: "link", size: "xs" }))}
+        >
           Home
         </Link>
       </CardFooter>

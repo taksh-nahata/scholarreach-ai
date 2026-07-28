@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, Shield, Zap } from "lucide-react";
+import { Mail, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -13,17 +13,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-
-type PresetMap = Record<
-  string,
-  { label: string; host: string; port: number; help: string }
->;
 
 function ConnectInboxInner() {
   const params = useSearchParams();
@@ -31,289 +24,148 @@ function ConnectInboxInner() {
     mailConnected?: boolean;
     gmailConnected?: boolean;
     mailProvider?: string | null;
-    presets?: PresetMap;
   }>({});
-  const [platform, setPlatform] = useState<{
-    configured?: boolean;
-    connected?: boolean;
-    replyTo?: string;
-    fromHint?: string | null;
-  }>({});
-  const [preset, setPreset] = useState("outlook_smtp");
-  const [host, setHost] = useState("smtp.office365.com");
-  const [port, setPort] = useState("587");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<"platform" | "oauth" | "smtp" | null>(null);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [setupUris, setSetupUris] = useState<{ login?: string; gmail?: string }>(
+    {}
+  );
 
   async function refresh() {
-    const [smtpRes, platRes] = await Promise.all([
+    const [smtpRes, provRes] = await Promise.all([
       fetch("/api/mail/smtp"),
-      fetch("/api/mail/platform"),
+      fetch("/api/auth/providers-status"),
     ]);
-    if (smtpRes.ok) {
-      const data = await smtpRes.json();
-      setStatus(data);
-    }
-    if (platRes.ok) {
-      setPlatform(await platRes.json());
+    if (smtpRes.ok) setStatus(await smtpRes.json());
+    if (provRes.ok) {
+      const p = await provRes.json();
+      setGoogleReady(!!p.google);
     }
   }
 
   useEffect(() => {
     refresh().catch(() => undefined);
-    if (params.get("connected")) {
-      toast.success(`Connected: ${params.get("connected")}`);
+    if (params.get("connected") === "gmail") {
+      toast.success("Gmail access granted — emails will send from your address");
     }
     if (params.get("error")) {
+      const err = params.get("error") || "";
       toast.error(
-        `Google connect failed (${params.get("error")}). Use Platform sending instead — Gmail SMTP/App Passwords are unreliable.`
+        err === "access_denied"
+          ? "Google/parent denied Gmail access. On Family Link use “Ask every time”, then approve when prompted."
+          : `Gmail connect failed (${err}). Try again with your parent present.`
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  useEffect(() => {
-    const p = status.presets?.[preset];
-    if (p) {
-      if (p.host) setHost(p.host);
-      setPort(String(p.port));
-    }
-  }, [preset, status.presets]);
-
-  async function enablePlatform(enable: boolean) {
-    setBusy("platform");
-    try {
-      const res = await fetch("/api/mail/platform", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enable }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Platform mail failed");
-      toast.success(enable ? "Platform sending enabled" : "Platform sending off");
-      await refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function connectGmailOAuth() {
-    setBusy("oauth");
+  async function requestGmailAccess() {
+    setBusy(true);
     try {
       const res = await fetch("/api/mail/gmail/connect");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "OAuth unavailable");
+      if (res.status === 503 && data.setupRequired) {
+        setSetupUris(data.redirectUris || {});
+        throw new Error(
+          "Server is missing Google OAuth keys. Ask the admin to add GOOGLE_CLIENT_ID + SECRET (see setup below)."
+        );
+      }
+      if (!res.ok) throw new Error(data.error || "Could not start Gmail connect");
+      // Same pattern as Apps Script: Google consent screen for Gmail permission
       window.location.href = data.url;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "OAuth failed");
-      setBusy(null);
+      setBusy(false);
     }
   }
 
-  async function saveSmtp(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy("smtp");
-    try {
-      const res = await fetch("/api/mail/smtp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preset,
-          host,
-          port: Number(port),
-          username,
-          password,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "SMTP connect failed");
-      toast.success("SMTP connected");
-      setPassword("");
-      await refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "SMTP failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const ready = status.mailConnected || status.gmailConnected || platform.connected;
+  const gmailReady = !!(status.gmailConnected || status.mailProvider === "gmail");
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <div>
         <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Connect sending
+          Connect Gmail
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Scalable path uses Resend (not Gmail SMTP / Apps Script). Replies still
-          go to your email.
+          Request permission to send from your Gmail — same idea as authorizing
+          Apps Script, without Apps Script. Professors see your real address.
         </p>
       </div>
 
-      {ready && (
+      {gmailReady && (
         <Alert>
           <Shield className="size-4" />
-          <AlertTitle>Sending ready</AlertTitle>
+          <AlertTitle>Gmail connected</AlertTitle>
           <AlertDescription>
-            Provider:{" "}
-            {status.mailProvider ||
-              (platform.connected ? "platform" : "—")}{" "}
-            <Badge variant="secondary" className="ml-2">
-              ready
+            Sending uses your Google account{" "}
+            <Badge variant="secondary" className="ml-1">
+              gmail.send
             </Badge>
           </AlertDescription>
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-display text-xl">
-            Platform sending (recommended)
-          </CardTitle>
-          <CardDescription>
-            Uses Resend on a verified domain — thousands/day when you upgrade the
-            plan. Not capped by Gmail&apos;s ~100 Apps Script / personal SMTP
-            limits. Professors reply to {platform.replyTo || "your account email"}.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {!platform.configured && (
-            <Alert>
-              <AlertTitle>Operator setup needed</AlertTitle>
-              <AlertDescription>
-                Add <code>RESEND_API_KEY</code> and <code>RESEND_FROM</code>{" "}
-                (verified domain) on Vercel. Free Resend tier works for testing;
-                paid/SES later for real volume.
-              </AlertDescription>
-            </Alert>
-          )}
-          {platform.fromHint && (
-            <p className="text-xs text-muted-foreground">
-              From: {platform.fromHint} · Reply-To: your login email
-            </p>
-          )}
-          {platform.connected ? (
-            <Button
-              variant="outline"
-              onClick={() => enablePlatform(false)}
-              disabled={busy !== null}
-            >
-              {busy === "platform" ? <Spinner data-icon="inline-start" /> : null}
-              Disable platform sending
-            </Button>
-          ) : (
-            <Button onClick={() => enablePlatform(true)} disabled={busy !== null}>
-              {busy === "platform" ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <Zap data-icon="inline-start" />
-              )}
-              Enable platform sending
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+      <Alert>
+        <AlertTitle>Family Link (what your dad sees)</AlertTitle>
+        <AlertDescription className="flex flex-col gap-2 text-sm">
+          <span>
+            <strong>Basic info</strong> = Sign in with Google (name + email) —
+            that matches login.
+          </span>
+          <span>
+            <strong>Ask every time</strong> = when we request Gmail send below,
+            Google should prompt him to approve (not the hard “not allowed”
+            wall).
+          </span>
+          <span>
+            After you connect once, it appears under{" "}
+            <em>Manage third-party app access</em>.
+          </span>
+        </AlertDescription>
+      </Alert>
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-display text-xl">Gmail OAuth (optional)</CardTitle>
+          <CardTitle className="font-display text-xl">
+            Request Gmail access
+          </CardTitle>
           <CardDescription>
-            Sends from your Gmail via API. Family Link often blocks this, and
-            personal Gmail still has low daily caps — prefer Platform sending for
-            scale.
+            Opens Google&apos;s permission screen for sending mail as you. Have
+            your parent nearby if Family Link asks them to approve.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button
-            variant="outline"
-            onClick={connectGmailOAuth}
-            disabled={busy !== null}
-          >
-            {busy === "oauth" ? (
+        <CardContent className="flex flex-col gap-3">
+          {!googleReady && (
+            <Alert variant="destructive">
+              <AlertTitle>OAuth keys not on the server yet</AlertTitle>
+              <AlertDescription className="text-sm">
+                Create a Google Cloud OAuth client, enable Gmail API, add both
+                redirect URIs, then run{" "}
+                <code className="text-xs">
+                  node scripts/set-google-oauth.cjs CLIENT_ID CLIENT_SECRET
+                </code>
+                .
+                {setupUris.gmail && (
+                  <span className="mt-2 block break-all text-xs">
+                    Gmail callback: {setupUris.gmail}
+                  </span>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+          <Button size="lg" onClick={requestGmailAccess} disabled={busy}>
+            {busy ? (
               <Spinner data-icon="inline-start" />
             ) : (
               <Mail data-icon="inline-start" />
             )}
-            Connect Gmail (OAuth)
+            {gmailReady ? "Reconnect Gmail access" : "Request Gmail access"}
           </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-display text-xl">
-            Outlook / Yahoo / school SMTP
-          </CardTitle>
-          <CardDescription>
-            For non-Gmail mailboxes. Gmail App Passwords are no longer reliable.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={saveSmtp} className="flex flex-col gap-4">
-            <Field>
-              <FieldLabel>Provider</FieldLabel>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={preset}
-                onChange={(e) => setPreset(e.target.value)}
-              >
-                {Object.entries(status.presets || {})
-                  .filter(([id]) => id !== "gmail_smtp")
-                  .map(([id, p]) => (
-                    <option key={id} value={id}>
-                      {p.label}
-                    </option>
-                  ))}
-                {!status.presets && (
-                  <>
-                    <option value="outlook_smtp">Outlook</option>
-                    <option value="yahoo_smtp">Yahoo</option>
-                    <option value="custom_smtp">Custom SMTP</option>
-                  </>
-                )}
-              </select>
-              <FieldDescription>
-                {status.presets?.[preset]?.help ||
-                  "Use your provider’s SMTP settings."}
-              </FieldDescription>
-            </Field>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="host">SMTP host</FieldLabel>
-                <Input id="host" value={host} onChange={(e) => setHost(e.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="port">Port</FieldLabel>
-                <Input id="port" value={port} onChange={(e) => setPort(e.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="user">Email / username</FieldLabel>
-                <Input
-                  id="user"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="pass">Password / app password</FieldLabel>
-                <Input
-                  id="pass"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="off"
-                />
-              </Field>
-            </FieldGroup>
-            <Button type="submit" disabled={busy !== null}>
-              {busy === "smtp" ? <Spinner data-icon="inline-start" /> : null}
-              Verify & save
-            </Button>
-          </form>
+          <p className="text-xs text-muted-foreground">
+            First sign in with email/password (or Google basic info), then tap
+            this. Scope: send email only — not full mailbox read.
+          </p>
         </CardContent>
       </Card>
 

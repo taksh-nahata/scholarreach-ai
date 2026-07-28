@@ -9,14 +9,14 @@ import { isPlatformMailConfigured } from "./platform_mail";
 async function isMailReady(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return false;
+  if (user.gmailConnected && (user.googleAccessToken || user.googleRefreshToken)) {
+    return true;
+  }
   if (
     user.mailProvider === "platform" &&
     user.mailConnected &&
     isPlatformMailConfigured()
   ) {
-    return true;
-  }
-  if (user.gmailConnected && (user.googleAccessToken || user.googleRefreshToken)) {
     return true;
   }
   if (user.mailConnected && user.smtpPassEnc && user.smtpHost) return true;
