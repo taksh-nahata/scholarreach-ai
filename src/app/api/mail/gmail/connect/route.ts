@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { withAuthUser } from "@/lib/api-auth";
-import { prisma } from "@/lib/prisma";
 
 const GMAIL_SCOPES = [
   "openid",
