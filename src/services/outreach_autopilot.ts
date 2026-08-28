@@ -77,7 +77,7 @@ export async function runAutopilotForUser(
   userId: string,
   opts?: { force?: boolean; tickRounds?: number }
 ): Promise<AutopilotStepResult> {
-  let profile = await prisma.studentProfile.findUnique({
+  const profile = await prisma.studentProfile.findUnique({
     where: { userId },
     include: { user: true },
   });
@@ -99,23 +99,26 @@ export async function runAutopilotForUser(
     return { userId, skipped: true, reason: "dry_run", actions: [] };
   }
 
-  profile = await ensureAutopilotReady(userId);
-  if (!profile) {
+  await ensureAutopilotReady(userId);
+  const settings = await prisma.studentProfile.findUnique({
+    where: { userId },
+  });
+  if (!settings) {
     return { userId, skipped: true, reason: "no_profile", actions: [] };
   }
 
   const actions: string[] = [];
-  if (!profile.autopilotEnabled) {
+  if (!settings.autopilotEnabled) {
     actions.push("autopilot_auto_enabled");
   }
-  if (profile.autoApproveMode === "agent_gate") {
+  if (settings.autoApproveMode === "agent_gate") {
     actions.push("heuristic_gate_only");
   }
 
   if (
     !opts?.force &&
-    profile.autopilotLastRunAt &&
-    Date.now() - profile.autopilotLastRunAt.getTime() < COOLDOWN_MS
+    settings.autopilotLastRunAt &&
+    Date.now() - settings.autopilotLastRunAt.getTime() < COOLDOWN_MS
   ) {
     const tickRounds = opts?.tickRounds ?? 6;
     for (let i = 0; i < tickRounds; i++) {
@@ -161,10 +164,10 @@ export async function runAutopilotForUser(
     pendingDraftRows.map((r) => r.professorId).filter(Boolean) as string[]
   );
 
-  const minFit = profile.autopilotMinFit ?? 50;
-  const mineWhenBelow = profile.autopilotMineWhenBelow ?? 25;
-  const mineCount = Math.min(profile.autopilotMineCount ?? 30, 35);
-  const maxDrafts = Math.min(profile.autopilotMaxDraftsPerRun ?? 30, 35);
+  const minFit = settings.autopilotMinFit ?? 50;
+  const mineWhenBelow = settings.autopilotMineWhenBelow ?? 25;
+  const mineCount = Math.min(settings.autopilotMineCount ?? 30, 35);
+  const maxDrafts = Math.min(settings.autopilotMaxDraftsPerRun ?? 30, 35);
 
   const readyPool = professors.filter(
     (p) =>
@@ -207,7 +210,7 @@ export async function runAutopilotForUser(
   }
 
   // 4) Heuristic gate → queue (agent_gate / auto modes; no manual review)
-  const approvalMode = profile.autoApproveMode || "agent_gate";
+  const approvalMode = settings.autoApproveMode || "agent_gate";
   const pendingDrafts = await prisma.draft.count({
     where: {
       userId,
