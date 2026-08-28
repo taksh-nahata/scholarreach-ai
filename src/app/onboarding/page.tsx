@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 import { OUTREACH_REGIONS } from "@/lib/regions";
 
@@ -67,8 +68,11 @@ export default function OnboardingPage() {
       return;
     }
     const data = await res.json();
-    if (data.user?.onboardingComplete) {
-      router.replace("/dashboard");
+    const forceEdit =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("edit") === "1";
+    if (data.user?.onboardingComplete && !forceEdit) {
+      router.replace("/profile");
       return;
     }
     const p = data.profile;
@@ -243,12 +247,7 @@ export default function OnboardingPage() {
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <div className="mb-8 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-              SR
-            </span>
-            <span className="font-display text-lg">ScholarReach</span>
-          </Link>
+          <BrandLogo height={32} />
           <span className="text-xs text-muted-foreground">{progress}% set up</span>
         </div>
 
@@ -300,7 +299,7 @@ export default function OnboardingPage() {
                     id="headline"
                     value={headline}
                     onChange={(e) => setHeadline(e.target.value)}
-                    placeholder="Dual-enrollment student · robotics + computer vision"
+                    placeholder="Undergraduate researcher · your field of interest"
                   />
                 </Field>
               </FieldGroup>
@@ -557,7 +556,7 @@ export default function OnboardingPage() {
                     id="style"
                     value={styleNotes}
                     onChange={(e) => setStyleNotes(e.target.value)}
-                    placeholder="e.g. Never use em dashes. Mention VEX and Cal Poly early. Keep under 180 words."
+                    placeholder="e.g. Keep under 180 words. Mention a specific paper. No em dashes."
                     rows={3}
                   />
                 </Field>
@@ -567,7 +566,7 @@ export default function OnboardingPage() {
                     id="interests"
                     value={interests}
                     onChange={(e) => setInterests(e.target.value)}
-                    placeholder="Computer vision, robotics, autonomous systems…"
+                    placeholder="Your research interests, methods, topics…"
                     rows={2}
                   />
                 </Field>
@@ -624,8 +623,8 @@ export default function OnboardingPage() {
                 Ready to personalize every draft
               </CardTitle>
               <CardDescription>
-                This profile stays private to your workspace and feeds subject lines,
-                bullet highlights, and sign-offs.
+                Confirm what ScholarReach extracted. This is the fuel for every
+                draft — edit Profile anytime if something looks wrong.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
@@ -643,12 +642,54 @@ export default function OnboardingPage() {
                   <span className="text-muted-foreground">Tone: </span>
                   {tone.replace("_", " ")} · {workMode}
                 </p>
+                {interests && (
+                  <p className="mt-1">
+                    <span className="text-muted-foreground">Interests: </span>
+                    {interests}
+                  </p>
+                )}
+                {styleNotes && (
+                  <p className="mt-1">
+                    <span className="text-muted-foreground">Style notes: </span>
+                    {styleNotes}
+                  </p>
+                )}
+                <p className="mt-2 text-xs">
+                  {cvPreview || cvText ? (
+                    <span className="text-emerald-700">
+                      CV / resume text on file — drafts may mention an attachment
+                    </span>
+                  ) : (
+                    <span className="text-amber-700">
+                      No CV uploaded — drafts will not say a CV is attached
+                    </span>
+                  )}
+                </p>
                 {achievements.length > 0 && (
-                  <ul className="mt-3 list-disc space-y-1 pl-5 text-muted-foreground">
-                    {achievements.slice(0, 5).map((a, i) => (
-                      <li key={i}>{a.title || a.detail}</li>
-                    ))}
-                  </ul>
+                  <>
+                    <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Achievements pulled for emails
+                    </p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                      {achievements.slice(0, 8).map((a, i) => (
+                        <li key={i}>
+                          {a.title || a.detail}
+                          {a.title && a.detail ? ` — ${a.detail}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {(cvPreview || cvText) && (
+                  <>
+                    <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      CV excerpt on file
+                    </p>
+                    <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 text-[11px] text-muted-foreground">
+                      {(cvPreview || cvText).slice(0, 500)}
+                      {(cvPreview || cvText).length > 500 ? "…" : ""}
+                    </pre>
+                  </>
                 )}
               </div>
               <Button size="lg" onClick={finish} disabled={busy}>

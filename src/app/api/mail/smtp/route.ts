@@ -14,6 +14,8 @@ export async function GET() {
       mailProvider: user.mailProvider,
       mailConnected: user.mailConnected || user.gmailConnected,
       gmailConnected: user.gmailConnected,
+      needsGmailReconnect: !user.gmailConnected || !user.googleRefreshToken,
+      hasRefreshToken: !!user.googleRefreshToken,
       smtpHost: user.smtpHost,
       smtpUser: user.smtpUser,
       presets: MAIL_PRESETS,

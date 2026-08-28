@@ -86,17 +86,8 @@ export const authOptions: NextAuthOptions = {
       });
 
       if (account?.provider === "google") {
-        // Login tokens only — do not mark Gmail connected until mail scopes granted
-        await prisma.user.update({
-          where: { id: dbUser.id },
-          data: {
-            googleAccessToken: account.access_token || null,
-            googleRefreshToken: account.refresh_token || undefined,
-            googleTokenExpiry: account.expires_at
-              ? new Date(account.expires_at * 1000)
-              : null,
-          },
-        });
+        // Identity login only — NEVER write/clobber Gmail mail tokens here.
+        // Mail tokens are set exclusively by /api/mail/gmail/callback after send+read scopes.
       }
 
       if (account?.provider === "azure-ad") {

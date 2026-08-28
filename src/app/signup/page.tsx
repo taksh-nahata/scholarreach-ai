@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 
 export default function SignupPage() {
@@ -72,7 +73,7 @@ export default function SignupPage() {
         return;
       }
       toast.message(
-        "Family Link often blocks new apps. Prefer email + password if Google says no."
+        "If Google blocks sign-up on a supervised account, use email + password instead."
       );
       const { signIn } = await import("next-auth/react");
       await signIn("google", { callbackUrl: "/onboarding" });
@@ -86,24 +87,19 @@ export default function SignupPage() {
     <main className="flex min-h-screen items-center justify-center px-4 py-12">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <Link href="/" className="mb-2 flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-              SR
-            </span>
-            <span className="font-display">ScholarReach</span>
-          </Link>
+          <BrandLogo height={32} className="mb-2" priority />
           <CardTitle className="font-display text-2xl">Create account</CardTitle>
           <CardDescription>
-            Free student workspace. Family Link users: create with email + password
-            (your Gmail address works).
+            Free student workspace. You can use your school or Gmail address with
+            a ScholarReach password.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <Alert>
-            <AlertTitle>Family Link?</AlertTitle>
+            <AlertTitle>Supervised Google accounts</AlertTitle>
             <AlertDescription>
-              Don&apos;t use Sign up with Google — supervised accounts are often
-              blocked. Pick a password here instead.
+              If Google blocks Sign up with Google, create an account with email +
+              password instead. You can still connect Gmail later for sending.
             </AlertDescription>
           </Alert>
 

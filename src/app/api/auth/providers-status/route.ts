@@ -13,6 +13,6 @@ export async function GET() {
         ? `${process.env.NEXTAUTH_URL.replace(/\/$/, "")}/api/auth/callback/google`
         : null),
     note:
-      "Google Sign-In uses identity scopes only (Family Link friendly). Gmail send is connected separately.",
+      "Google Sign-In uses identity scopes only. Gmail send + reply read is connected separately.",
   });
 }

@@ -40,6 +40,10 @@ model User {
   accounts        Account[]
   sessions        Session[]
   profile         StudentProfile?
+  attachments     ProfileAttachment[]
+  suppressions    EmailSuppression[]
+  backgroundJobs  BackgroundJob[]
+  replyInsights   ReplyInsight[]
 }
 
 /// Per-user researcher identity used for personalized outreach
@@ -52,12 +56,14 @@ model StudentProfile {
   displayName   String?
   headline      String? // e.g. "HS dual-enrollment student · robotics + CV"
   phone         String?
-  location      String?
+  location      String? // home / where they live
   school        String?
+  schoolLocation String? // campus city if different from school name
   gradeOrYear   String?
   githubUrl     String?
   linkedinUrl   String?
   personalSite  String?
+  socialsJson   String? // [{label, url}] e.g. Twitter, Scholar, Discord
 
   // Structured JSON blobs
   educationJson     String? // [{school, degree, years, gpa, coursework[]}]
@@ -69,16 +75,23 @@ model StudentProfile {
   // Preferences
   writingStyleNotes String? // how they want to sound
   tonePreference    String? @default("warm_professional") // warm_professional | concise | formal
+  customRules       String? // freeform must-follow rules for every draft
   targetRegionsJson String? // ["us_west","europe",...]
-  workModePref      String? @default("remote") // remote | hybrid | in_person | flexible
+  // remote | hybrid | in_person | flexible | location_based
+  workModePref      String? @default("remote")
+  maxMilesInPerson  Int?    @default(25)
+  maxMilesHybrid    Int?    @default(60)
   researchInterests String?
   availabilityNotes String?
 
-  // CV / resume
-  cvFileName    String?
-  cvMimeType    String?
-  cvText        String? // extracted plain text
-  cvUploadedAt  DateTime?
+  // Primary credential (CV / resume) — also mirrored as ProfileAttachment
+  cvFileName         String?
+  cvMimeType         String?
+  cvText             String?
+  cvFileData         String?
+  cvUploadedAt       DateTime?
+  attachCvToEmails   Boolean @default(true)
+  credentialDocType  String? // cv | resume | unknown — detected from file
 
   // Onboarding interview
   interviewJson     String? // [{role, content, at}]
@@ -90,11 +103,49 @@ model StudentProfile {
 
   // Automation preferences
   // manual | agent_gate | auto
-  autoApproveMode         String  @default("manual")
+  autoApproveMode         String  @default("agent_gate")
   autoApproveMinApprovals Int     @default(5)
+
+  // Auto follow-ups when no reply
+  followUpEnabled         Boolean @default(true)
+  followUpAfterDays       Int     @default(7)
+  followUpMaxCount        Int     @default(1) // max follow-ups per outreach
+
+  // Daily hands-off pipeline: mine → verify → draft → agent-queue
+  autopilotEnabled         Boolean  @default(true)
+  autopilotMineWhenBelow   Int      @default(25) // mine when fewer verified-ready leads
+  autopilotMineCount       Int      @default(30)
+  autopilotMinFit          Int      @default(50)
+  autopilotMaxDraftsPerRun Int      @default(30)
+  autopilotLastRunAt       DateTime?
+
+  // What replies taught us about what works (injected into draft prompts)
+  outreachLearningsJson    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Extra files for context and/or email attachment (portfolio, transcript, etc.)
+model ProfileAttachment {
+  id              String   @id @default(cuid())
+  userId          String
+  label           String
+  kind            String   @default("other") // credential | portfolio | transcript | writing_sample | other
+  fileName        String
+  mimeType        String
+  textExcerpt     String?
+  fileData        String // base64
+  // always | never | on_rule
+  attachMode      String   @default("never")
+  ruleHint        String? // when on_rule: match against professor focus / custom rules
+  detectedDocType String? // cv | resume | unknown (for credential files)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Account {
@@ -222,7 +273,14 @@ model ScheduledEmail {
   htmlBody      String?
   scheduledIso  DateTime
   scheduledTime String?
-  status        String    @default("scheduled") // scheduled | sent | failed | cancelled
+  status        String    @default("scheduled") // scheduled | sending | sent | failed | cancelled
+  kind          String    @default("outreach") // outreach | follow_up
+  sentHistoryId String?   // parent outreach when this is a follow-up
+  // A/B: short_bump | value_nudge | null (outreach)
+  variant       String?
+  // Gmail thread reply (same conversation as original outreach)
+  replyToThreadId  String?
+  replyToMessageId String? // Gmail API message id of parent
   lastError     String?
   sentAt        DateTime?
   createdAt     DateTime  @default(now())
@@ -232,19 +290,105 @@ model ScheduledEmail {
   professor Professor? @relation(fields: [professorId], references: [id], onDelete: SetNull)
 
   @@index([userId, status, scheduledIso])
+  @@index([userId, sentHistoryId])
+  @@index([userId, variant])
 }
 
 model SentHistory {
-  id            String   @id @default(cuid())
-  userId        String
-  toEmail       String
-  professorName String?
-  university    String?
-  subject       String
+  id             String    @id @default(cuid())
+  userId         String
+  toEmail        String
+  professorName  String?
+  university     String?
+  subject        String
+  body           String?
+  ccEmails       String?
+  professorId    String?
+  kind           String    @default("outreach") // outreach | follow_up
+  variant        String?   // A/B arm: short_bump | value_nudge
   gmailMessageId String?
-  sentAt        DateTime @default(now())
+  gmailThreadId  String?
+  replyDetected  Boolean   @default(false)
+  replyAt        DateTime?
+  replySnippet   String?
+  replyFrom      String?
+  replyBody      String?
+  lastProcessedReplyId String?
+  replyCount     Int       @default(0)
+  lastReplyCheck DateTime?
+  followUpCount  Int       @default(0)
+  followUpQueuedAt DateTime?
+  sentAt         DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, toEmail])
+  @@index([userId, replyDetected])
+  @@index([userId, gmailThreadId])
+  @@index([userId, sentAt])
+}
+
+/// Parsed professor replies — referrals, open-source paths, links (incl. follow-up replies)
+model ReplyInsight {
+  id                String   @id @default(cuid())
+  userId            String
+  sentHistoryId     String?
+  gmailMessageId    String?
+  gmailThreadId     String?
+  professorName     String?
+  university        String?
+  professorEmail    String?
+  replyToKind       String?  // outreach | follow_up
+  replyToSubject    String?
+  sentiment         String   @default("neutral") // interested | decline | referral | question | neutral
+  headline          String
+  recommendation    String?
+  opportunitiesJson String?  // [{title, detail, type, keywords[]}]
+  linksJson         String?  // [{url, title, description}]
+  rawReply          String?
+  status            String   @default("new") // new | reviewed | actioned | dismissed
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gmailMessageId])
+  @@index([userId, status, createdAt])
+  @@index([userId, sentiment])
+}
+
+/// Do-not-contact list (unsubscribe / bounce / manual)
+model EmailSuppression {
+  id        String   @id @default(cuid())
+  userId    String
+  email     String
+  reason    String?
+  source    String? // reply | bounce | manual
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+/// Long-running UI jobs (email reverify, etc.) — progress synced across pages
+model BackgroundJob {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String // email_reverify | approval_sweep | mine_leads | draft_generate
+  status      String // running | completed | failed | cancelled
+  total       Int      @default(0)
+  processed   Int      @default(0)
+  verified    Int      @default(0)
+  failed      Int      @default(0)
+  payload     String? // JSON: ids + cursor
+  lastMessage String?
+  eventLog    String? // JSON: [{at, msg}] recent activity for the UI
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, type])
 }

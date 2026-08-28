@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -8,45 +8,39 @@ export default function PrivacyPage() {
     <main className="relative min-h-screen">
       <div className="pointer-events-none absolute inset-0 desk-grid opacity-40" />
       <div className="relative z-10 mx-auto max-w-3xl px-6 py-12">
-        <Link href="/" className="mb-8 inline-flex items-center gap-2 font-semibold">
-          <span className="wax-seal flex size-8 items-center justify-center rounded-lg text-primary-foreground">
-            <Sparkles className="size-3.5" />
-          </span>
-          <span className="font-display">ScholarReach AI</span>
-        </Link>
+        <BrandLogo height={32} className="mb-8" />
 
         <h1 className="font-display text-4xl font-semibold tracking-tight">
           Privacy
         </h1>
         <p className="mt-3 text-muted-foreground">
-          Last updated {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+          How ScholarReach handles your profile, Gmail access, and outreach data.
         </p>
 
-        <div className="mt-10 space-y-8 text-sm leading-relaxed text-foreground/90">
+        <div className="mt-10 space-y-8 text-sm leading-relaxed">
           <section>
-            <h2 className="font-display text-xl font-semibold">Private workspaces</h2>
+            <h2 className="font-display text-xl font-semibold">Your workspace</h2>
             <p className="mt-2 text-muted-foreground">
-              Each student account is isolated. Faculty leads, draft emails, scheduled
-              sends, and delivery history belong only to the signed-in workspace.
-              We do not publish your outreach data on the marketing site or public demos.
+              Each account is private. Leads, drafts, send history, and connected
+              inbox tokens belong to that user only and are not shared with other
+              accounts.
             </p>
           </section>
 
           <section>
             <h2 className="font-display text-xl font-semibold">What we store</h2>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-              <li>Account email and display name</li>
-              <li>Professor leads and research notes you create or import</li>
-              <li>Email drafts, scheduled queue items, and send history</li>
-              <li>Optional Gmail OAuth tokens (gmail.send scope) when you connect inbox</li>
-            </ul>
+            <p className="mt-2 text-muted-foreground">
+              Profile details you enter or upload (CV text, achievements, targets),
+              faculty leads you mine, draft emails, queue state, and reply
+              tracking metadata. Gmail OAuth tokens are stored encrypted so we can
+              send as you and detect replies when you connect inbox.
+            </p>
           </section>
 
           <section>
-            <h2 className="font-display text-xl font-semibold">What we never do</h2>
+            <h2 className="font-display text-xl font-semibold">What we do not do</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-              <li>Sell your faculty lists or draft content</li>
-              <li>Store your Gmail password</li>
+              <li>Sell your personal data</li>
               <li>Put personal outreach JSON into the public GitHub Pages demo</li>
               <li>Share one student&apos;s queue with another account</li>
             </ul>
@@ -55,8 +49,9 @@ export default function PrivacyPage() {
           <section>
             <h2 className="font-display text-xl font-semibold">Hosting</h2>
             <p className="mt-2 text-muted-foreground">
-              The live app runs on Vercel (Hobby) with Neon Postgres (free tier).
-              The GitHub Pages site is a static marketing/demo surface with synthetic sample data only.
+              The live app runs on Vercel with Neon Postgres. Accounts are
+              private and scoped per user. The GitHub Pages site is a static
+              marketing/demo surface with synthetic sample data only.
             </p>
           </section>
 
@@ -70,11 +65,11 @@ export default function PrivacyPage() {
         </div>
 
         <div className="mt-12 flex gap-3">
-          <Link href="/login" className={cn(buttonVariants())}>
-            Open workspace
+          <Link href="/terms" className={cn(buttonVariants({ variant: "outline" }))}>
+            Terms
           </Link>
-          <Link href="/" className={cn(buttonVariants({ variant: "outline" }))}>
-            Home
+          <Link href="/signup" className={cn(buttonVariants())}>
+            Get started free
           </Link>
         </div>
       </div>

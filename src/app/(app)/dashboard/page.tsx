@@ -17,6 +17,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { getDemoBundle } from "@/lib/demo";
 import { getDemoSession } from "@/lib/demo-auth";
+import { allowDemoFallback } from "@/lib/live-mode";
+import { toast } from "sonner";
 
 type QueueItem = {
   id: string;
@@ -83,11 +85,25 @@ export default function DashboardPage() {
           setGmailConnected(!!json.user?.gmailConnected);
         }
       } catch {
-        const demo = getDemoBundle();
-        setData({
-          metrics: demo.metrics,
-          queue: demo.queue as QueueItem[],
-        });
+        if (allowDemoFallback()) {
+          const demo = getDemoBundle();
+          setData({
+            metrics: demo.metrics,
+            queue: demo.queue as QueueItem[],
+          });
+        } else {
+          setData({
+            metrics: {
+              totalLeads: 0,
+              pendingApprovals: 0,
+              scheduledSends: 0,
+              emailsDelivered: 0,
+              contacted: 0,
+            },
+            queue: [],
+          });
+          toast.error("Could not load dashboard");
+        }
       }
     }
     load();
@@ -174,10 +190,11 @@ export default function DashboardPage() {
 
       {!gmailConnected && (
         <Alert>
-          <AlertTitle>Connect an inbox to unlock live sending</AlertTitle>
+          <AlertTitle>Connect Gmail to send live</AlertTitle>
           <AlertDescription>
-            Mining and approvals work now. Dispatch stays dry-run until Gmail,
-            Outlook, Yahoo, or SMTP is connected and dry-run is disabled.{" "}
+            Mining and approvals work now. Emails send from your Gmail on the
+            scheduled times (Tue–Thu 8–9 AM in the professor&apos;s timezone)
+            once inbox is connected.{" "}
             <Link
               href="/connect-inbox"
               className="text-primary underline-offset-4 hover:underline"
@@ -213,15 +230,18 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="font-display">Your outreach queue</CardTitle>
-            <CardDescription>
-              Scheduled and delivered messages from your private account
+          <CardDescription>
+              Active and upcoming sends (cancelled items stay in the full queue)
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-0">
             {queue.slice(0, 8).map((item, idx) => (
               <div key={item.id}>
                 {idx > 0 && <Separator className="my-3" />}
-                <div className="flex items-center justify-between gap-3">
+                <Link
+                  href={`/queue?open=${encodeURIComponent(item.id)}`}
+                  className="flex items-center justify-between gap-3 rounded-lg outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   <div className="min-w-0">
                     <div className="truncate font-medium">
                       {item.professorName || item.toEmail || item.subject}
@@ -230,9 +250,14 @@ export default function DashboardPage() {
                       {item.university || "—"} ·{" "}
                       {item.scheduledTime || item.scheduledIso || "unscheduled"}
                     </div>
+                    {item.subject ? (
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {item.subject}
+                      </div>
+                    ) : null}
                   </div>
                   <Badge variant="secondary">{item.status}</Badge>
-                </div>
+                </Link>
               </div>
             ))}
             {queue.length === 0 && (
@@ -265,6 +290,12 @@ export default function DashboardPage() {
             </Link>
             <Link href="/queue" className={cn(buttonVariants(), "justify-start")}>
               Open full outreach queue
+            </Link>
+            <Link
+              href="/replies"
+              className={cn(buttonVariants({ variant: "outline" }), "justify-start")}
+            >
+              Track professor replies
             </Link>
             <Link
               href="/connect-inbox"

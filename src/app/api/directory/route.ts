@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { mineFreshLeads } from "@/services/faculty_miner";
 import { withAuthUser } from "@/lib/api-auth";
+import { PENDING_APPROVAL_STATUSES } from "@/lib/draft_status";
+import { emailConfidenceTier } from "@/services/email_confidence";
 
 export async function GET(req: NextRequest) {
   return withAuthUser(async (user) => {
@@ -13,46 +14,71 @@ export async function GET(req: NextRequest) {
     const professors = await prisma.professor.findMany({
       where: {
         userId: user.id,
-        ...(university ? { university: { contains: university } } : {}),
-        ...(focus ? { researchFocus: { contains: focus } } : {}),
+        ...(university ? { university: { contains: university, mode: "insensitive" } } : {}),
+        ...(focus ? { researchFocus: { contains: focus, mode: "insensitive" } } : {}),
         ...(q
           ? {
               OR: [
-                { name: { contains: q } },
-                { university: { contains: q } },
-                { researchFocus: { contains: q } },
-                { email: { contains: q } },
+                { name: { contains: q, mode: "insensitive" } },
+                { university: { contains: q, mode: "insensitive" } },
+                { researchFocus: { contains: q, mode: "insensitive" } },
+                { email: { contains: q, mode: "insensitive" } },
               ],
             }
           : {}),
       },
       include: {
-        drafts: { where: { status: "pending" }, take: 1 },
+        drafts: {
+          where: { status: { in: [...PENDING_APPROVAL_STATUSES] } },
+          take: 1,
+        },
       },
       orderBy: [{ matchScore: "desc" }, { createdAt: "desc" }],
     });
 
-    return NextResponse.json({ professors, count: professors.length });
+    const sentRows = await prisma.sentHistory.findMany({
+      where: {
+        userId: user.id,
+        professorId: { in: professors.map((p) => p.id) },
+      },
+      select: { professorId: true },
+      distinct: ["professorId"],
+    });
+    const contactedIds = new Set(
+      sentRows.map((r) => r.professorId).filter(Boolean) as string[]
+    );
+
+    return NextResponse.json({
+      professors: professors.map((p) => ({
+        ...p,
+        contacted: contactedIds.has(p.id),
+        emailConfidence: emailConfidenceTier({
+          email: p.email,
+          name: p.name,
+          university: p.university,
+          homepageUrl: p.homepageUrl,
+        }),
+      })),
+      count: professors.length,
+    });
   });
 }
 
 export async function POST(req: NextRequest) {
   return withAuthUser(async (user) => {
     const body = await req.json().catch(() => ({}));
-    // Free-tier guard: keep mining modest so operator API bills stay small
-    const count = Math.min(Number(body.count) || 10, 20);
-
-    if (!process.env.EXA_API_KEY && !process.env.TAVILY_API_KEY) {
-      return NextResponse.json(
-        {
-          error:
-            "Mining APIs not configured on this free Hobby deploy. Import leads or set optional operator keys.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const result = await mineFreshLeads(user.id, count);
-    return NextResponse.json(result);
+    const count = Math.min(Number(body.count) || 20, 20);
+    // Prefer background job so leaving the tab does not abort mining
+    const { startMineLeadsJob, tickMineLeadsJob } = await import(
+      "@/services/background_jobs"
+    );
+    const job = await startMineLeadsJob(user.id, count);
+    const ticked = (await tickMineLeadsJob(user.id, 2)) || job;
+    return NextResponse.json({
+      ok: true,
+      background: true,
+      mined: ticked.verified,
+      job: ticked,
+    });
   });
 }

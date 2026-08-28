@@ -7,9 +7,10 @@ import { prisma } from "@/lib/prisma";
 export type ApiKind = "exa" | "tavily" | "firecrawl" | "llm";
 
 const DEFAULTS: Record<ApiKind, number> = {
+  // Enough headroom for parallel Tavily backups during mining
   exa: Number(process.env.SEARCH_DAILY_BUDGET_EXA || 15),
-  tavily: Number(process.env.SEARCH_DAILY_BUDGET_TAVILY || 25),
-  firecrawl: Number(process.env.SEARCH_DAILY_BUDGET_FIRECRAWL || 20),
+  tavily: Number(process.env.SEARCH_DAILY_BUDGET_TAVILY || 40),
+  firecrawl: Number(process.env.SEARCH_DAILY_BUDGET_FIRECRAWL || 25),
   llm: Number(process.env.SEARCH_DAILY_BUDGET_LLM || 80),
 };
 
@@ -46,29 +47,36 @@ export async function getApiUsage(userId: string) {
   };
 }
 
-/** Returns false if over budget (caller should skip the paid call). */
+/** Returns false if over budget (caller should skip the paid call). Atomic increment. */
 export async function tryConsumeApi(
   userId: string | null | undefined,
   kind: ApiKind,
   amount = 1
 ): Promise<boolean> {
   if (!userId) {
-    // Global/system calls: allow but do not track
     return true;
   }
   const day = todayKey();
   const limit = DEFAULTS[kind];
-  const row = await getRow(userId);
-  const current = row[kind];
-  if (current + amount > limit) {
+  await getRow(userId); // ensure row exists
+
+  // Conditional increment — only succeeds if still under limit
+  const col = kind; // exa | tavily | firecrawl | llm
+  const result = await prisma.$executeRawUnsafe(
+    `UPDATE "ApiUsageDaily"
+     SET "${col}" = "${col}" + $1, "updatedAt" = NOW()
+     WHERE "userId" = $2 AND "day" = $3 AND "${col}" + $1 <= $4`,
+    amount,
+    userId,
+    day,
+    limit
+  );
+
+  if (Number(result) === 0) {
     console.warn(
-      `[ApiBudget] ${kind} exhausted for user ${userId} (${current}/${limit})`
+      `[ApiBudget] ${kind} exhausted for user ${userId} (limit ${limit})`
     );
     return false;
   }
-  await prisma.apiUsageDaily.update({
-    where: { userId_day: { userId, day } },
-    data: { [kind]: { increment: amount } },
-  });
   return true;
 }

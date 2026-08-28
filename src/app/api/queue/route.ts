@@ -5,7 +5,20 @@ import { withAuthUser } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
   return withAuthUser(async (user) => {
-    const status = new URL(req.url).searchParams.get("status");
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status");
+    const id = searchParams.get("id");
+
+    if (id) {
+      const item = await prisma.scheduledEmail.findFirst({
+        where: { id, userId: user.id },
+        include: { professor: true },
+      });
+      if (!item) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return NextResponse.json({ item });
+    }
 
     const items = await prisma.scheduledEmail.findMany({
       where: {
@@ -49,11 +62,16 @@ export async function PATCH(req: NextRequest) {
         where: { id },
         data: {
           scheduledIso: new Date(),
-          scheduledTime: "Dispatch override — next drip tick",
+          scheduledTime: "Sending now (manual override)",
           status: "scheduled",
+          lastError: null,
         },
       });
-      const result = await dripDispatcher.processNextQueueItem(user.id);
+      // Process THIS row — not whichever oldest overdue happens to be due
+      const result = await dripDispatcher.processNextQueueItem(user.id, {
+        force: true,
+        itemId: id,
+      });
       return NextResponse.json({ item: updated, dispatchResult: result });
     }
 
@@ -63,7 +81,7 @@ export async function PATCH(req: NextRequest) {
         where: { id },
         data: {
           scheduledIso: slot,
-          scheduledTime: dripDispatcher.formatSlot(slot),
+          scheduledTime: dripDispatcher.formatSlot(slot, item.university),
           status: "scheduled",
         },
       });
@@ -79,13 +97,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
 
     if (body.action === "dispatch_batch") {
+      const force = !!body.force;
       const results = [];
       for (let i = 0; i < 5; i++) {
-        const r = await dripDispatcher.processNextQueueItem(user.id);
+        const r = await dripDispatcher.processNextQueueItem(user.id, { force });
         results.push(r);
-        if (r.skipped && r.reason === "empty_queue") break;
+        if (r && "skipped" in r && r.reason === "empty_queue") break;
       }
-      return NextResponse.json({ results });
+      return NextResponse.json({ results, liveSend: dripDispatcher.isLiveSend() });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

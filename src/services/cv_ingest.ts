@@ -4,6 +4,17 @@ import {
   ensureProfile,
   parseJsonField,
 } from "@/services/profile_service";
+import { detectCredentialDocType } from "@/services/doc_type";
+import { extractTextFromUpload } from "@/services/cv_text_extract";
+import {
+  cleanLocation,
+  mergeParsedCv,
+  parseCvStructured,
+  parseRichness,
+  type ParsedCv,
+} from "@/services/cv_structured_parse";
+
+export { extractTextFromUpload };
 
 type ExtractedProfile = {
   displayName?: string;
@@ -21,78 +32,30 @@ type ExtractedProfile = {
   researchInterests?: string;
 };
 
-async function callLlm(prompt: string): Promise<string | null> {
-  const base = process.env.PROVOCATIVE_BASE_URL;
-  const key = process.env.PROVOCATIVE_API_KEY;
-  const model = process.env.PRIMARY_MODEL || "qwen3.6-35b";
-  if (!base || !key) return null;
+async function callLlmExtract(text: string): Promise<ExtractedProfile | null> {
+  try {
+    const { completePrompt } = await import("@/services/llm_client");
+    const llmRaw = await completePrompt({
+      system:
+        "Extract structured student profile data from resume/CV text. Return ONLY valid JSON. Keep every experience, project, award, and skill listed.",
+      user: `Extract this student's profile as JSON with keys:
+displayName, headline, school, gradeOrYear, location (city/state only), phone, githubUrl, linkedinUrl,
+education (array of {school, degree, years, gpa, coursework}),
+achievements (array of {title, detail, year}) — from HONORS/AWARDS,
+projects (array of {name, role, details, tags}) — include BOTH research/work experience entries AND featured projects; name = lab/org/project title,
+skills ({languages: string[], frameworks: string[], expertise: string[]}),
+researchInterests (string).
 
-  const res = await fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      messages: [
-        {
-          role: "system",
-          content:
-            "Extract structured student profile data from resume/CV text. Return ONLY valid JSON.",
-        },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-  if (!res.ok) return null;
-  const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return json.choices?.[0]?.message?.content || null;
-}
-
-function heuristicExtract(text: string): ExtractedProfile {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const email = text.match(/[\w.+-]+@[\w.-]+\.\w+/)?.[0];
-  const github = text.match(/github\.com\/[\w-]+/i)?.[0];
-  const linkedin = text.match(/linkedin\.com\/in\/[\w-]+/i)?.[0];
-  const gpa = text.match(/\b\d\.\d{1,2}\s*GPA\b/i)?.[0];
-
-  const achievements: Array<Record<string, unknown>> = [];
-  for (const line of lines) {
-    if (
-      /(champion|award|place|selected|intern|founder|lead|published|olympiad)/i.test(
-        line
-      ) &&
-      line.length > 24 &&
-      line.length < 280
-    ) {
-      achievements.push({ title: line.slice(0, 120), detail: line });
-    }
+CV text:
+"""
+${text.slice(0, 14000)}
+"""`,
+      task: "extract",
+    });
+    return safeParseExtract(llmRaw);
+  } catch {
+    return null;
   }
-
-  return {
-    displayName: lines[0]?.length < 80 ? lines[0] : undefined,
-    school: lines.find((l) => /(university|college|high school|school)/i.test(l)),
-    location: lines.find((l) => /(, [A-Z]{2}\b|California|CA\b)/.test(l)),
-    phone: text.match(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/)?.[0],
-    githubUrl: github ? `https://${github.replace(/^https?:\/\//, "")}` : undefined,
-    linkedinUrl: linkedin
-      ? `https://${linkedin.replace(/^https?:\/\//, "")}`
-      : undefined,
-    education: email
-      ? [{ school: lines.find((l) => /school|college|university/i.test(l)), gpa }]
-      : [],
-    achievements: achievements.slice(0, 10),
-    projects: [],
-    skills: {},
-    researchInterests: undefined,
-  };
 }
 
 function safeParseExtract(raw: string | null): ExtractedProfile | null {
@@ -106,30 +69,130 @@ function safeParseExtract(raw: string | null): ExtractedProfile | null {
   }
 }
 
-export async function extractTextFromUpload(
-  buffer: Buffer,
-  mimeType: string,
-  fileName: string
-): Promise<string> {
-  const lower = fileName.toLowerCase();
-  if (
-    mimeType.includes("text") ||
-    lower.endsWith(".txt") ||
-    lower.endsWith(".md")
-  ) {
-    return buffer.toString("utf8");
-  }
+function asParsed(e: ExtractedProfile | null | undefined): ParsedCv | null {
+  if (!e) return null;
+  const skills = (e.skills || {}) as {
+    languages?: string[];
+    frameworks?: string[];
+    expertise?: string[];
+  };
+  return {
+    displayName: e.displayName,
+    headline: e.headline,
+    school: e.school,
+    gradeOrYear: e.gradeOrYear,
+    location: cleanLocation(e.location),
+    phone: e.phone,
+    githubUrl: e.githubUrl,
+    linkedinUrl: e.linkedinUrl,
+    education: Array.isArray(e.education) ? e.education : [],
+    achievements: Array.isArray(e.achievements)
+      ? e.achievements.map((a) => ({
+          title: String((a as { title?: string }).title || ""),
+          detail: String(
+            (a as { detail?: string }).detail ||
+              (a as { title?: string }).title ||
+              ""
+          ),
+        }))
+      : [],
+    projects: Array.isArray(e.projects)
+      ? e.projects.map((p) => ({
+          name: String((p as { name?: string }).name || ""),
+          role: (p as { role?: string }).role
+            ? String((p as { role?: string }).role)
+            : undefined,
+          details: String(
+            (p as { details?: string }).details ||
+              (p as { name?: string }).name ||
+              ""
+          ),
+          tags: Array.isArray((p as { tags?: string[] }).tags)
+            ? (p as { tags: string[] }).tags
+            : undefined,
+        }))
+      : [],
+    skills: {
+      languages: Array.isArray(skills.languages) ? skills.languages : [],
+      frameworks: Array.isArray(skills.frameworks) ? skills.frameworks : [],
+      expertise: Array.isArray(skills.expertise) ? skills.expertise : [],
+    },
+    researchInterests: e.researchInterests,
+  };
+}
 
-  if (mimeType.includes("pdf") || lower.endsWith(".pdf")) {
-    // pdf-parse is CJS
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse") as (b: Buffer) => Promise<{ text: string }>;
-    const parsed = await pdfParse(buffer);
-    return parsed.text || "";
-  }
+function existingAsParsed(existing: {
+  displayName?: string | null;
+  headline?: string | null;
+  school?: string | null;
+  gradeOrYear?: string | null;
+  location?: string | null;
+  phone?: string | null;
+  githubUrl?: string | null;
+  linkedinUrl?: string | null;
+  educationJson?: string | null;
+  achievementsJson?: string | null;
+  projectsJson?: string | null;
+  skillsJson?: string | null;
+  researchInterests?: string | null;
+} | null): ParsedCv | null {
+  if (!existing) return null;
+  const skills = parseJsonField(existing.skillsJson, {
+    languages: [],
+    frameworks: [],
+    expertise: [],
+  }) as ParsedCv["skills"];
+  return {
+    displayName: existing.displayName || undefined,
+    headline: existing.headline || undefined,
+    school: existing.school || undefined,
+    gradeOrYear: existing.gradeOrYear || undefined,
+    location: cleanLocation(existing.location),
+    phone: existing.phone || undefined,
+    githubUrl: existing.githubUrl || undefined,
+    linkedinUrl: existing.linkedinUrl || undefined,
+    education: parseJsonField(existing.educationJson, []),
+    achievements: parseJsonField(existing.achievementsJson, []),
+    projects: parseJsonField(existing.projectsJson, []),
+    skills: {
+      languages: skills.languages || [],
+      frameworks: skills.frameworks || [],
+      expertise: skills.expertise || [],
+    },
+    researchInterests: existing.researchInterests || undefined,
+  };
+}
 
-  // Fallback: attempt utf8
-  return buffer.toString("utf8");
+/** Prefer the richer of structured vs LLM; never keep empty over full. */
+function pickBest(
+  structured: ParsedCv,
+  llm: ParsedCv | null,
+  previous: ParsedCv | null
+): ParsedCv {
+  let best = structured;
+  if (llm && parseRichness(llm) > parseRichness(best)) {
+    best = mergeParsedCv(llm, structured);
+  } else if (llm) {
+    best = mergeParsedCv(structured, llm);
+  }
+  // If somehow still empty on a list the user previously had filled, keep previous
+  if (previous) {
+    if (!best.projects.length && previous.projects.length) {
+      best = { ...best, projects: previous.projects };
+    }
+    if (!best.achievements.length && previous.achievements.length) {
+      best = { ...best, achievements: previous.achievements };
+    }
+    if (
+      !best.skills.languages.length &&
+      !best.skills.frameworks.length &&
+      previous.skills.languages.length + previous.skills.frameworks.length > 0
+    ) {
+      best = { ...best, skills: previous.skills };
+    }
+  }
+  best.location = cleanLocation(best.location);
+  return best;
 }
 
 export async function ingestCvForUser(opts: {
@@ -138,37 +201,44 @@ export async function ingestCvForUser(opts: {
   mimeType: string;
   buffer: Buffer;
 }) {
-  const text = (await extractTextFromUpload(
-    opts.buffer,
-    opts.mimeType,
-    opts.fileName
-  )).trim();
+  const text = (
+    await extractTextFromUpload(opts.buffer, opts.mimeType, opts.fileName)
+  ).trim();
   if (!text || text.length < 40) {
-    throw new Error("Could not read enough text from that file. Try PDF or paste text.");
+    throw new Error(
+      "Could not read enough text from that file. Try PDF or paste text."
+    );
   }
 
-  const llmRaw = await callLlm(
-    `Extract this student's profile as JSON with keys:
-displayName, headline, school, gradeOrYear, location, phone, githubUrl, linkedinUrl,
-education (array of {school, degree, years, gpa, coursework}),
-achievements (array of {title, detail, year}),
-projects (array of {name, role, details}),
-skills ({languages, frameworks, expertise}),
-researchInterests (string).
-
-CV text:
-"""
-${text.slice(0, 12000)}
-"""`
-  );
-
-  const extracted = safeParseExtract(llmRaw) || heuristicExtract(text);
   await ensureProfile(opts.userId);
+  const existing = await prisma.studentProfile.findUnique({
+    where: { userId: opts.userId },
+  });
+
+  const structured = parseCvStructured(text);
+  const llm = asParsed(await callLlmExtract(text));
+  const previous = existingAsParsed(existing);
+  const extracted = pickBest(structured, llm, previous);
 
   const brief = compileProfileBrief({
-    ...extracted,
+    displayName: extracted.displayName || existing?.displayName,
+    headline: extracted.headline || existing?.headline,
+    school: extracted.school || existing?.school,
+    gradeOrYear: extracted.gradeOrYear || existing?.gradeOrYear,
+    location: extracted.location || cleanLocation(existing?.location),
+    education: extracted.education,
+    achievements: extracted.achievements,
+    projects: extracted.projects,
+    skills: extracted.skills,
+    researchInterests:
+      extracted.researchInterests || existing?.researchInterests,
+    writingStyleNotes: existing?.writingStyleNotes,
+    tonePreference: existing?.tonePreference,
+    customRules: existing?.customRules,
+    targetRegions: parseJsonField(existing?.targetRegionsJson, [] as string[]),
+    workModePref: existing?.workModePref,
+    availabilityNotes: existing?.availabilityNotes,
     cvText: text,
-    targetRegions: [],
   });
 
   const profile = await prisma.studentProfile.update({
@@ -182,22 +252,19 @@ ${text.slice(0, 12000)}
       phone: extracted.phone || undefined,
       githubUrl: extracted.githubUrl || undefined,
       linkedinUrl: extracted.linkedinUrl || undefined,
-      educationJson: extracted.education
-        ? JSON.stringify(extracted.education)
-        : undefined,
-      achievementsJson: extracted.achievements
-        ? JSON.stringify(extracted.achievements)
-        : undefined,
-      projectsJson: extracted.projects
-        ? JSON.stringify(extracted.projects)
-        : undefined,
-      skillsJson: extracted.skills ? JSON.stringify(extracted.skills) : undefined,
+      educationJson: JSON.stringify(extracted.education || []),
+      achievementsJson: JSON.stringify(extracted.achievements || []),
+      projectsJson: JSON.stringify(extracted.projects || []),
+      skillsJson: JSON.stringify(extracted.skills || {}),
       researchInterests: extracted.researchInterests || undefined,
       cvFileName: opts.fileName,
       cvMimeType: opts.mimeType,
       cvText: text,
+      cvFileData: opts.buffer.toString("base64"),
       cvUploadedAt: new Date(),
-      onboardingStep: "interview",
+      attachCvToEmails: true,
+      credentialDocType: detectCredentialDocType(opts.fileName, text),
+      onboardingStep: existing?.onboardingStep === "done" ? "done" : "interview",
       profileBrief: brief,
     },
   });
@@ -209,10 +276,47 @@ ${text.slice(0, 12000)}
     });
   }
 
+  const detected = detectCredentialDocType(opts.fileName, text);
+  const existingAtt = await prisma.profileAttachment.findFirst({
+    where: { userId: opts.userId, fileName: opts.fileName },
+  });
+  if (!existingAtt) {
+    await prisma.profileAttachment.create({
+      data: {
+        userId: opts.userId,
+        label:
+          detected === "resume"
+            ? "Resume"
+            : detected === "cv"
+              ? "CV"
+              : "Credentials",
+        kind: "credential",
+        fileName: opts.fileName,
+        mimeType: opts.mimeType || "application/octet-stream",
+        textExcerpt: text.slice(0, 4000),
+        fileData: opts.buffer.toString("base64"),
+        attachMode: "always",
+        detectedDocType: detected,
+      },
+    });
+  } else {
+    await prisma.profileAttachment.update({
+      where: { id: existingAtt.id },
+      data: {
+        textExcerpt: text.slice(0, 4000),
+        fileData: opts.buffer.toString("base64"),
+        mimeType: opts.mimeType || existingAtt.mimeType,
+        detectedDocType: detected,
+      },
+    });
+  }
+
   return {
     profile,
     extracted,
     preview: text.slice(0, 600),
+    detectedDocType: detected,
+    parseScore: parseRichness(extracted),
   };
 }
 
@@ -224,6 +328,70 @@ export async function ingestCvText(userId: string, text: string) {
     mimeType: "text/plain",
     buffer,
   });
+}
+
+/** Re-parse stored cvText without replacing the uploaded binary. */
+export async function reparseStoredCv(userId: string) {
+  const existing = await prisma.studentProfile.findUnique({
+    where: { userId },
+  });
+  if (!existing?.cvText || existing.cvText.length < 40) {
+    throw new Error("No stored CV text to reparse");
+  }
+
+  const text = existing.cvText;
+  const structured = parseCvStructured(text);
+  const llm = asParsed(await callLlmExtract(text));
+  const previous = existingAsParsed(existing);
+  const extracted = pickBest(structured, llm, previous);
+
+  const brief = compileProfileBrief({
+    displayName: extracted.displayName || existing.displayName,
+    headline: extracted.headline || existing.headline,
+    school: extracted.school || existing.school,
+    gradeOrYear: extracted.gradeOrYear || existing.gradeOrYear,
+    location: extracted.location || cleanLocation(existing.location),
+    education: extracted.education,
+    achievements: extracted.achievements,
+    projects: extracted.projects,
+    skills: extracted.skills,
+    researchInterests:
+      extracted.researchInterests || existing.researchInterests,
+    writingStyleNotes: existing.writingStyleNotes,
+    tonePreference: existing.tonePreference,
+    customRules: existing.customRules,
+    targetRegions: parseJsonField(existing.targetRegionsJson, [] as string[]),
+    workModePref: existing.workModePref,
+    availabilityNotes: existing.availabilityNotes,
+    cvText: text,
+  });
+
+  const profile = await prisma.studentProfile.update({
+    where: { userId },
+    data: {
+      displayName: extracted.displayName || undefined,
+      headline: extracted.headline || undefined,
+      school: extracted.school || undefined,
+      gradeOrYear: extracted.gradeOrYear || undefined,
+      location: extracted.location || undefined,
+      phone: extracted.phone || undefined,
+      githubUrl: extracted.githubUrl || undefined,
+      linkedinUrl: extracted.linkedinUrl || undefined,
+      educationJson: JSON.stringify(extracted.education || []),
+      achievementsJson: JSON.stringify(extracted.achievements || []),
+      projectsJson: JSON.stringify(extracted.projects || []),
+      skillsJson: JSON.stringify(extracted.skills || {}),
+      researchInterests: extracted.researchInterests || undefined,
+      profileBrief: brief,
+    },
+  });
+
+  return {
+    profile,
+    extracted,
+    preview: text.slice(0, 600),
+    parseScore: parseRichness(extracted),
+  };
 }
 
 export function mergeInterviewIntoProfile(

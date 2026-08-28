@@ -20,8 +20,21 @@ const sans = IBM_Plex_Sans({
 
 export const metadata: Metadata = {
   title: "ScholarReach — Research outreach for students",
+  applicationName: "ScholarReach",
   description:
-    "Private workspaces for faculty discovery, CV-aware personalized emails, and academic-window Gmail dispatch.",
+    "ScholarReach helps students discover faculty, draft personalized research emails from their own Gmail, schedule academic-window sends, and track professor replies in a private workspace.",
+  icons: {
+    icon: [
+      { url: "/brand/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/scholarreach-mark.png", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  verification: {
+    google:
+      process.env.GOOGLE_SITE_VERIFICATION ||
+      "U2zmStviN-onNwcuImdTdo-Lt1iflXPkxbUOwHAt0NU",
+  },
 };
 
 export default function RootLayout({

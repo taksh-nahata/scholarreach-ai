@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuthUser } from "@/lib/api-auth";
 import { ingestCvForUser, ingestCvText } from "@/services/cv_ingest";
+import { prisma } from "@/lib/prisma";
+import { compileProfileBrief, parseJsonField } from "@/services/profile_service";
 
 export const runtime = "nodejs";
 
@@ -44,5 +46,51 @@ export async function POST(req: NextRequest) {
       preview: result.preview,
       fileName: file.name,
     });
+  });
+}
+
+export async function DELETE() {
+  return withAuthUser(async (user) => {
+    const existing = await prisma.studentProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (!existing) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const brief = compileProfileBrief({
+      displayName: existing.displayName,
+      headline: existing.headline,
+      school: existing.school,
+      gradeOrYear: existing.gradeOrYear,
+      location: existing.location,
+      education: parseJsonField(existing.educationJson, []),
+      achievements: parseJsonField(existing.achievementsJson, []),
+      projects: parseJsonField(existing.projectsJson, []),
+      skills: parseJsonField(existing.skillsJson, {}),
+      researchInterests: existing.researchInterests,
+      writingStyleNotes: existing.writingStyleNotes,
+      tonePreference: existing.tonePreference,
+      customRules: existing.customRules,
+      targetRegions: parseJsonField(existing.targetRegionsJson, [] as string[]),
+      workModePref: existing.workModePref,
+      availabilityNotes: existing.availabilityNotes,
+      cvText: null,
+    });
+
+    await prisma.studentProfile.update({
+      where: { userId: user.id },
+      data: {
+        cvFileName: null,
+        cvMimeType: null,
+        cvText: null,
+        cvFileData: null,
+        cvUploadedAt: null,
+        attachCvToEmails: false,
+        profileBrief: brief,
+      },
+    });
+
+    return NextResponse.json({ ok: true });
   });
 }

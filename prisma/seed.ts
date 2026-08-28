@@ -243,6 +243,7 @@ async function main() {
           userId: user.id,
           toEmail: clean,
           subject: "(legacy contacted)",
+          kind: "legacy",
         },
       });
       sentHistoryCreated++;

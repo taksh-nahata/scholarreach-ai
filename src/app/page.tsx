@@ -12,6 +12,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AcademicWindowSeal } from "@/components/AcademicWindowSeal";
+import { BrandLogo } from "@/components/BrandLogo";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -29,7 +30,7 @@ const features = [
   {
     icon: Search,
     title: "Faculty discovery",
-    desc: "Mine universities for labs in AI, robotics, CV, ML, and computational biology.",
+    desc: "Mine universities for labs that match your research interests and regions.",
   },
   {
     icon: Mail,
@@ -39,39 +40,12 @@ const features = [
   {
     icon: ShieldCheck,
     title: "Private workspaces",
-    desc: "Your leads, drafts, and send history stay isolated. Public demos never include your data.",
+    desc: "Each account is isolated. Leads, drafts, and send history never mix between users.",
   },
   {
     icon: Clock,
     title: "Academic-window send",
-    desc: "Tue–Thu 8–9 AM local, 500/hr drip, human approval on every message.",
-  },
-];
-
-const pricing = [
-  {
-    name: "Student",
-    price: "$0",
-    note: "Forever",
-    features: [
-      "Private workspace + onboarding",
-      "CV upload & achievement interview",
-      "Region targeting",
-      "Personalized drafts",
-    ],
-    cta: true,
-  },
-  {
-    name: "Clubs & offices",
-    price: "$0",
-    note: "Hobby stack",
-    features: [
-      "Same free hosting tier",
-      "Human approval workflow",
-      "Queue + contact history",
-      "No seat fees",
-    ],
-    cta: false,
+    desc: "Tue–Thu 8–9 AM local, paced drip, human approval on every message.",
   },
 ];
 
@@ -83,11 +57,12 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-2 font-semibold">
-          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-            SR
+        <div className="flex items-center gap-3">
+          <BrandLogo height={36} priority />
+          {/* Visible app name for Google OAuth brand checks (must match consent screen) */}
+          <span className="font-display text-lg font-semibold tracking-tight text-[#1a6fb5]">
+            ScholarReach
           </span>
-          <span className="font-display text-lg">ScholarReach</span>
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -102,7 +77,7 @@ export default function LandingPage() {
             className={cn(buttonVariants({ size: "sm" }))}
             {...(staticDemo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
           >
-            {staticDemo ? "Open the live app" : "Sign up"}
+            {staticDemo ? "Open the live app" : "Sign up free"}
           </Link>
         </div>
       </header>
@@ -110,14 +85,15 @@ export default function LandingPage() {
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-16 pt-8 lg:grid-cols-2">
         <div>
           <Badge variant="secondary" className="mb-4">
-            Free student research outreach
+            Free for everyone right now
           </Badge>
           <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-            Email professors like you already know your own story.
+            ScholarReach — research outreach for students
           </h1>
           <p className="mt-5 max-w-xl text-base text-muted-foreground sm:text-lg">
-            Upload a CV, answer a short interview, pick regions, and ScholarReach
-            drafts messages that sound like you — personalized to each lab.
+            ScholarReach helps students discover faculty, draft personalized
+            research emails from their own Gmail, and track professor replies —
+            privately, per account.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
@@ -129,10 +105,10 @@ export default function LandingPage() {
               <ArrowRight data-icon="inline-end" />
             </Link>
             <Link
-              href="/directory"
+              href="#about-scholarreach"
               className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
             >
-              Browse sample directory
+              About this app
             </Link>
           </div>
         </div>
@@ -141,7 +117,69 @@ export default function LandingPage() {
 
       <Separator className="mx-auto max-w-6xl" />
 
-      <section className="mx-auto max-w-6xl px-6 py-16">
+      <section
+        id="about-scholarreach"
+        className="mx-auto max-w-6xl scroll-mt-24 px-6 py-16"
+      >
+        <h2 className="font-display text-3xl font-semibold tracking-tight">
+          About ScholarReach
+        </h2>
+        <p className="mt-4 max-w-3xl text-base leading-relaxed text-muted-foreground">
+          <strong className="text-foreground">ScholarReach</strong> is a web
+          application for student research outreach. Students create a private
+          workspace, upload a CV, set research interests and target regions, and
+          use ScholarReach to find faculty matches, draft personalized emails,
+          schedule sends during academic hours, and detect replies.
+        </p>
+        <div className="mt-8 grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-lg">
+                Why ScholarReach uses Google
+              </CardTitle>
+              <CardDescription className="text-sm leading-relaxed">
+                ScholarReach requests Google Sign-In (name + email) so you can
+                create or access your account securely. Separately, ScholarReach
+                requests Gmail send and read access so outreach emails are sent
+                from <em>your</em> address and so the app can detect when a
+                professor replies. ScholarReach does not sell your data or send
+                mail without your approval workflow.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-lg">
+                Data &amp; privacy
+              </CardTitle>
+              <CardDescription className="text-sm leading-relaxed">
+                Each ScholarReach account is isolated. Profile content, faculty
+                leads, drafts, send history, and Gmail tokens stay with that
+                user. See our{" "}
+                <Link href="/privacy" className="underline">
+                  Privacy
+                </Link>{" "}
+                and{" "}
+                <Link href="/terms" className="underline">
+                  Terms
+                </Link>{" "}
+                for details.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+        <p className="mt-6 text-sm text-muted-foreground">
+          Official home page for the ScholarReach application:{" "}
+          <a
+            className="font-medium text-foreground underline"
+            href="https://scholarreach-ai.vercel.app/"
+          >
+            https://scholarreach-ai.vercel.app/
+          </a>
+        </p>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 pb-16">
         <h2 className="font-display text-3xl font-semibold tracking-tight">
           Built for the full outreach loop
         </h2>
@@ -174,7 +212,7 @@ export default function LandingPage() {
             },
             {
               title: "Regions + voice",
-              desc: "Target US West, Europe, remote-first, and set tone before drafting.",
+              desc: "Target regions you care about and set tone before drafting.",
             },
           ].map((s, i) => (
             <Card key={s.title}>
@@ -199,16 +237,16 @@ export default function LandingPage() {
             {
               icon: GraduationCap,
               title: "High school researchers",
-              desc: "Dual-enrollment and early research students.",
+              desc: "Early research students building a faculty outreach habit.",
             },
             {
               icon: Zap,
               title: "Undergraduates",
-              desc: "RA searches across R1 and international labs.",
+              desc: "RA searches across universities and labs worldwide.",
             },
             {
               icon: CheckCircle2,
-              title: "Career offices",
+              title: "Career offices & clubs",
               desc: "Repeatable outreach without spreadsheet chaos.",
             },
           ].map((a) => (
@@ -224,49 +262,42 @@ export default function LandingPage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-6 pb-16">
-        <h2 className="font-display text-3xl font-semibold tracking-tight">
-          Pricing
-        </h2>
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          {pricing.map((tier) => (
-            <Card key={tier.name}>
-              <CardHeader>
-                <Badge variant={tier.cta ? "default" : "secondary"} className="w-fit">
-                  {tier.note}
-                </Badge>
-                <CardTitle className="font-display text-2xl">{tier.name}</CardTitle>
-                <div className="font-display text-4xl font-semibold">{tier.price}</div>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  {tier.features.map((f) => (
-                    <li key={f} className="flex gap-2">
-                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                {tier.cta && (
-                  <Link
-                    href={primaryCtaHref}
-                    className={cn(buttonVariants({ size: "lg" }))}
-                    {...(staticDemo
-                      ? { target: "_blank", rel: "noopener noreferrer" }
-                      : {})}
-                  >
-                    {primaryCtaLabel}
-                  </Link>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <Badge className="w-fit">Free</Badge>
+            <CardTitle className="font-display text-3xl">
+              No paid plans right now
+            </CardTitle>
+            <CardDescription className="max-w-2xl text-base">
+              ScholarReach is free while we grow. Create an account, connect your
+              Gmail, and run the full loop — profile, mining, drafts, queue, and
+              reply tracking.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href={primaryCtaHref}
+              className={cn(buttonVariants({ size: "lg" }))}
+              {...(staticDemo
+                ? { target: "_blank", rel: "noopener noreferrer" }
+                : {})}
+            >
+              {primaryCtaLabel}
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
       </section>
 
       <footer className="border-t border-border py-8">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <div className="font-display font-medium text-foreground">ScholarReach</div>
+          <div className="font-display font-medium text-foreground">
+            ScholarReach
+          </div>
           <div className="flex flex-wrap gap-4">
+            <Link href="/#about-scholarreach" className="hover:text-foreground">
+              About
+            </Link>
             <Link href="/privacy" className="hover:text-foreground">
               Privacy
             </Link>

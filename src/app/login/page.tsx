@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 
 function LoginForm() {
@@ -45,7 +46,7 @@ function LoginForm() {
       ) {
         setFamilyLinkBlocked(true);
         toast.error(
-          "Google sign-in blocked or denied. Use password, or fix Family Link + OAuth setup."
+          "Google sign-in blocked or denied. Use password, or check supervised-account / OAuth settings."
         );
       } else {
         toast.error("Sign-in failed. Try email + password.");
@@ -99,7 +100,7 @@ function LoginForm() {
         return;
       }
       const { signIn } = await import("next-auth/react");
-      // Basic info only — matches Family Link “apps that only request basic info”
+      // Identity scopes only — Gmail is connected separately after login
       await signIn("google", { callbackUrl: "/dashboard" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Google sign-in failed");
@@ -110,12 +111,7 @@ function LoginForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <Link href="/" className="mb-2 flex items-center gap-2 font-semibold">
-          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-            SR
-          </span>
-          <span className="font-display">ScholarReach</span>
-        </Link>
+        <BrandLogo height={32} className="mb-2" priority />
         <CardTitle className="font-display text-2xl">Sign in</CardTitle>
         <CardDescription>
           Password always works. Google login only asks for basic info (name +
@@ -124,15 +120,14 @@ function LoginForm() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Alert variant={familyLinkBlocked ? "destructive" : "default"}>
-          <AlertTitle>Family Link</AlertTitle>
+          <AlertTitle>Google access</AlertTitle>
           <AlertDescription className="text-sm">
-            Your dad’s setting “apps that only request basic info” is exactly
-            what Google login uses. For sending mail, after login go to{" "}
+            Sign-in only asks for basic info (name + email). To send outreach
+            from your Gmail and track replies, connect inbox after login via{" "}
             <Link href="/connect-inbox" className="underline">
               Connect Gmail
-            </Link>{" "}
-            — that asks for Gmail access and he can approve when it says Ask
-            every time.
+            </Link>
+            . Supervised accounts may need guardian approval when Google prompts.
           </AlertDescription>
         </Alert>
 

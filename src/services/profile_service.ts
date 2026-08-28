@@ -11,6 +11,7 @@ export type ProfilePayload = {
   githubUrl?: string | null;
   linkedinUrl?: string | null;
   personalSite?: string | null;
+  socials?: Array<{ label: string; url: string }>;
   education?: unknown;
   achievements?: unknown;
   projects?: unknown;
@@ -18,10 +19,16 @@ export type ProfilePayload = {
   writingSamples?: unknown;
   writingStyleNotes?: string | null;
   tonePreference?: string | null;
+  customRules?: string | null;
   targetRegions?: string[];
   workModePref?: string | null;
+  schoolLocation?: string | null;
+  maxMilesInPerson?: number | null;
+  maxMilesHybrid?: number | null;
   researchInterests?: string | null;
   availabilityNotes?: string | null;
+  attachCvToEmails?: boolean;
+  credentialDocType?: string | null;
   onboardingStep?: string;
   interviewComplete?: boolean;
   onboardingComplete?: boolean;
@@ -46,6 +53,7 @@ export function compileProfileBrief(input: {
   displayName?: string | null;
   headline?: string | null;
   school?: string | null;
+  schoolLocation?: string | null;
   gradeOrYear?: string | null;
   location?: string | null;
   education?: unknown;
@@ -55,8 +63,12 @@ export function compileProfileBrief(input: {
   researchInterests?: string | null;
   writingStyleNotes?: string | null;
   tonePreference?: string | null;
+  customRules?: string | null;
   targetRegions?: string[];
   workModePref?: string | null;
+  maxMilesInPerson?: number | null;
+  maxMilesHybrid?: number | null;
+  socials?: Array<{ label?: string; url?: string }>;
   availabilityNotes?: string | null;
   cvText?: string | null;
 }): string {
@@ -64,13 +76,27 @@ export function compileProfileBrief(input: {
   lines.push(`Name: ${input.displayName || "Student researcher"}`);
   if (input.headline) lines.push(`Headline: ${input.headline}`);
   if (input.school) lines.push(`School: ${input.school}`);
+  if (input.schoolLocation) lines.push(`School location: ${input.schoolLocation}`);
   if (input.gradeOrYear) lines.push(`Year/status: ${input.gradeOrYear}`);
-  if (input.location) lines.push(`Location: ${input.location}`);
+  if (input.location) lines.push(`Home / lives in: ${input.location}`);
   if (input.researchInterests) lines.push(`Research interests: ${input.researchInterests}`);
-  if (input.workModePref) lines.push(`Work mode preference: ${input.workModePref}`);
+  if (input.workModePref) {
+    let wm = `Work mode preference: ${input.workModePref}`;
+    if (input.workModePref === "location_based") {
+      wm += ` (in-person ≤${input.maxMilesInPerson ?? 25} mi, hybrid ≤${input.maxMilesHybrid ?? 60} mi from home)`;
+    }
+    lines.push(wm);
+  }
   if (input.availabilityNotes) lines.push(`Availability: ${input.availabilityNotes}`);
   if (input.tonePreference) lines.push(`Tone: ${input.tonePreference}`);
   if (input.writingStyleNotes) lines.push(`Writing style: ${input.writingStyleNotes}`);
+  if (input.customRules) lines.push(`Custom rules (must follow):\n${input.customRules}`);
+  if (input.socials?.length) {
+    lines.push("Socials / links:");
+    for (const s of input.socials.slice(0, 12)) {
+      if (s?.label && s?.url) lines.push(`- ${s.label}: ${s.url}`);
+    }
+  }
   if (input.targetRegions?.length) {
     lines.push(
       `Target regions: ${input.targetRegions.map(regionLabel).join(", ")}`
@@ -153,6 +179,20 @@ export async function getProfileBundle(userId: string) {
   });
   if (!user) return null;
   const p = user.profile;
+  if (!p) {
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        onboardingComplete: user.onboardingComplete,
+        gmailConnected: user.gmailConnected,
+      },
+      profile: null,
+    };
+  }
+
+  const { cvFileData, ...profileRest } = p;
   return {
     user: {
       id: user.id,
@@ -161,18 +201,24 @@ export async function getProfileBundle(userId: string) {
       onboardingComplete: user.onboardingComplete,
       gmailConnected: user.gmailConnected,
     },
-    profile: p
-      ? {
-          ...p,
-          education: parseJsonField(p.educationJson, []),
-          achievements: parseJsonField(p.achievementsJson, []),
-          projects: parseJsonField(p.projectsJson, []),
-          skills: parseJsonField(p.skillsJson, {}),
-          writingSamples: parseJsonField(p.writingSamplesJson, []),
-          targetRegions: parseJsonField(p.targetRegionsJson, [] as string[]),
-          interview: parseJsonField(p.interviewJson, [] as Array<{ role: string; content: string; at?: string }>),
-        }
-      : null,
+    profile: {
+      ...profileRest,
+      hasCvFile: !!(cvFileData && cvFileData.length > 0),
+      education: parseJsonField(p.educationJson, []),
+      achievements: parseJsonField(p.achievementsJson, []),
+      projects: parseJsonField(p.projectsJson, []),
+      skills: parseJsonField(p.skillsJson, {}),
+      writingSamples: parseJsonField(p.writingSamplesJson, []),
+      targetRegions: parseJsonField(p.targetRegionsJson, [] as string[]),
+      socials: parseJsonField(
+        p.socialsJson,
+        [] as Array<{ label: string; url: string }>
+      ),
+      interview: parseJsonField(
+        p.interviewJson,
+        [] as Array<{ role: string; content: string; at?: string }>
+      ),
+    },
   };
 }
 
@@ -189,11 +235,15 @@ export async function updateProfile(userId: string, payload: ProfilePayload) {
     payload.writingSamples ?? parseJsonField(existing?.writingSamplesJson, []);
   const targetRegions =
     payload.targetRegions ?? parseJsonField(existing?.targetRegionsJson, [] as string[]);
+  const socials =
+    payload.socials ??
+    parseJsonField(existing?.socialsJson, [] as Array<{ label: string; url: string }>);
 
   const brief = compileProfileBrief({
     displayName: payload.displayName ?? existing?.displayName,
     headline: payload.headline ?? existing?.headline,
     school: payload.school ?? existing?.school,
+    schoolLocation: payload.schoolLocation ?? existing?.schoolLocation,
     gradeOrYear: payload.gradeOrYear ?? existing?.gradeOrYear,
     location: payload.location ?? existing?.location,
     education,
@@ -203,8 +253,12 @@ export async function updateProfile(userId: string, payload: ProfilePayload) {
     researchInterests: payload.researchInterests ?? existing?.researchInterests,
     writingStyleNotes: payload.writingStyleNotes ?? existing?.writingStyleNotes,
     tonePreference: payload.tonePreference ?? existing?.tonePreference,
+    customRules: payload.customRules ?? existing?.customRules,
     targetRegions,
     workModePref: payload.workModePref ?? existing?.workModePref,
+    maxMilesInPerson: payload.maxMilesInPerson ?? existing?.maxMilesInPerson,
+    maxMilesHybrid: payload.maxMilesHybrid ?? existing?.maxMilesHybrid,
+    socials,
     availabilityNotes: payload.availabilityNotes ?? existing?.availabilityNotes,
     cvText: existing?.cvText,
   });
@@ -217,10 +271,12 @@ export async function updateProfile(userId: string, payload: ProfilePayload) {
       phone: payload.phone ?? undefined,
       location: payload.location ?? undefined,
       school: payload.school ?? undefined,
+      schoolLocation: payload.schoolLocation ?? undefined,
       gradeOrYear: payload.gradeOrYear ?? undefined,
       githubUrl: payload.githubUrl ?? undefined,
       linkedinUrl: payload.linkedinUrl ?? undefined,
       personalSite: payload.personalSite ?? undefined,
+      socialsJson: asJson(socials) ?? undefined,
       educationJson: asJson(education) ?? undefined,
       achievementsJson: asJson(achievements) ?? undefined,
       projectsJson: asJson(projects) ?? undefined,
@@ -228,10 +284,24 @@ export async function updateProfile(userId: string, payload: ProfilePayload) {
       writingSamplesJson: asJson(writingSamples) ?? undefined,
       writingStyleNotes: payload.writingStyleNotes ?? undefined,
       tonePreference: payload.tonePreference ?? undefined,
+      customRules: payload.customRules ?? undefined,
       targetRegionsJson: asJson(targetRegions) ?? undefined,
       workModePref: payload.workModePref ?? undefined,
+      maxMilesInPerson:
+        payload.maxMilesInPerson === undefined
+          ? undefined
+          : payload.maxMilesInPerson,
+      maxMilesHybrid:
+        payload.maxMilesHybrid === undefined
+          ? undefined
+          : payload.maxMilesHybrid,
       researchInterests: payload.researchInterests ?? undefined,
       availabilityNotes: payload.availabilityNotes ?? undefined,
+      attachCvToEmails:
+        payload.attachCvToEmails === undefined
+          ? undefined
+          : payload.attachCvToEmails,
+      credentialDocType: payload.credentialDocType ?? undefined,
       onboardingStep: payload.onboardingStep ?? undefined,
       interviewComplete: payload.interviewComplete ?? undefined,
       profileBrief: brief,

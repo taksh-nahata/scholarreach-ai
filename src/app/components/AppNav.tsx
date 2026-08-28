@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard,
   Users,
@@ -11,109 +12,233 @@ import {
   UserRound,
   Mail,
   Settings,
+  MessageSquareReply,
+  Lightbulb,
+  BarChart3,
+  MoreHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getDemoSession, type DemoSession } from "@/lib/demo-auth";
+import { BrandLogo } from "@/components/BrandLogo";
+import { allowDemoFallback } from "@/lib/live-mode";
+import { getDemoSession } from "@/lib/demo-auth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-const links = [
+const primaryLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/directory", label: "Directory", icon: Users },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/queue", label: "Queue", icon: ListOrdered },
-  { href: "/connect-inbox", label: "Inbox", icon: Mail },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/onboarding", label: "Profile", icon: UserRound },
 ];
 
-export function AppNav({
-  email,
-  gmailConnected,
-}: {
-  email?: string;
-  gmailConnected?: boolean;
-}) {
+const moreLinks = [
+  { href: "/replies", label: "Replies", icon: MessageSquareReply },
+  { href: "/opportunities", label: "Opportunities", icon: Lightbulb },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/connect-inbox", label: "Inbox", icon: Mail },
+  { href: "/profile", label: "Profile", icon: UserRound },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
+function isActive(pathname: string | null, href: string) {
+  return pathname === href || pathname?.startsWith(`${href}/`);
+}
+
+export function AppNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const [session, setSession] = useState<DemoSession | null>(null);
+  const { data: session, status } = useSession();
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [mailProvider, setMailProvider] = useState<string | null>(null);
+  const [demoEmail, setDemoEmail] = useState("");
 
   useEffect(() => {
-    const sync = () => setSession(getDemoSession());
-    sync();
-    window.addEventListener("scholarreach-auth", sync);
-    return () => window.removeEventListener("scholarreach-auth", sync);
-  }, []);
+    if (allowDemoFallback()) {
+      const demo = getDemoSession();
+      if (demo) {
+        setDemoEmail(demo.email);
+        setGmailConnected(demo.gmailConnected);
+      }
+      return;
+    }
+    if (status !== "authenticated") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/dashboard");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        setGmailConnected(
+          !!json.user?.gmailConnected || !!json.user?.mailConnected
+        );
+        setMailProvider(json.user?.mailProvider || null);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [status, pathname]);
 
-  const displayEmail = session?.email || email || "";
-  const connected = session?.gmailConnected ?? !!gmailConnected;
+  const displayEmail =
+    session?.user?.email || (allowDemoFallback() ? demoEmail : "") || "";
+  const connected = gmailConnected;
+  const isGmail = !mailProvider || mailProvider === "gmail";
+  const moreActive = moreLinks.some((l) => isActive(pathname, l.href));
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-            SR
-          </span>
-          <span className="font-display text-lg">ScholarReach</span>
-        </Link>
+    <header className="sticky top-0 z-40 border-b border-border/80 bg-card/90 backdrop-blur-md">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-4">
+          <BrandLogo height={26} priority />
 
-        <nav className="hidden items-center gap-1 md:flex">
-          {links.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname?.startsWith(`${href}/`);
-            return (
-              <Link
-                key={href}
-                href={href}
+          <nav className="hidden items-center gap-0.5 md:flex">
+            {primaryLinks.map(({ href, label, icon: Icon }) => {
+              const active = isActive(pathname, href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    buttonVariants({
+                      variant: active ? "secondary" : "ghost",
+                      size: "sm",
+                    }),
+                    "gap-1.5"
+                  )}
+                >
+                  <Icon className="size-3.5 opacity-70" />
+                  {label}
+                </Link>
+              );
+            })}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
                 className={cn(
                   buttonVariants({
-                    variant: active ? "secondary" : "ghost",
+                    variant: moreActive ? "secondary" : "ghost",
                     size: "sm",
-                  })
+                  }),
+                  "gap-1.5"
                 )}
               >
-                <Icon data-icon="inline-start" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
+                <MoreHorizontal className="size-3.5 opacity-70" />
+                More
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-48">
+                {moreLinks.map(({ href, label, icon: Icon }) => (
+                  <DropdownMenuItem
+                    key={href}
+                    className="cursor-pointer gap-2"
+                    onClick={() => router.push(href)}
+                  >
+                    <Icon className="size-4 opacity-70" />
+                    {label}
+                    {isActive(pathname, href) ? (
+                      <span className="ml-auto text-[10px] text-muted-foreground">
+                        ·
+                      </span>
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => {
+                    if (allowDemoFallback()) {
+                      router.push("/login");
+                      return;
+                    }
+                    void signOut({ callbackUrl: "/login" });
+                  }}
+                >
+                  {status === "authenticated" ? "Sign out" : "Account"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </nav>
+        </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {displayEmail && (
-            <Badge
-              variant={connected ? "secondary" : "outline"}
-              className="hidden max-w-[220px] truncate sm:inline-flex"
-            >
-              {connected ? `Inbox · ${displayEmail}` : displayEmail}
-            </Badge>
+            <Link href="/connect-inbox" className="hidden sm:block">
+              <Badge
+                variant={connected ? "secondary" : "outline"}
+                className="max-w-[200px] truncate font-normal"
+              >
+                {connected
+                  ? `${isGmail ? "Gmail" : "Inbox"} connected`
+                  : "Connect inbox"}
+              </Badge>
+            </Link>
           )}
           <button
             type="button"
-            onClick={() => router.push("/login")}
-            className={cn(buttonVariants({ size: "sm" }))}
+            onClick={() => {
+              if (allowDemoFallback()) {
+                router.push("/login");
+                return;
+              }
+              void signOut({ callbackUrl: "/login" });
+            }}
+            className={cn(
+              buttonVariants({ size: "sm", variant: "outline" }),
+              "hidden md:inline-flex"
+            )}
           >
-            Account
+            {status === "authenticated" ? "Sign out" : "Account"}
           </button>
         </div>
       </div>
 
-      <nav className="flex gap-1 overflow-x-auto border-t border-border px-4 py-2 md:hidden">
-        {links.map(({ href, label }) => (
+      {/* Mobile: compact horizontal scroll of primary + key secondary */}
+      <nav className="flex gap-1 overflow-x-auto border-t border-border/60 px-3 py-1.5 md:hidden">
+        {[...primaryLinks, ...moreLinks.slice(0, 4)].map(({ href, label }) => (
           <Link
             key={href}
             href={href}
             className={cn(
               buttonVariants({
                 size: "xs",
-                variant: pathname === href ? "secondary" : "ghost",
+                variant: isActive(pathname, href) ? "secondary" : "ghost",
               }),
-              "whitespace-nowrap"
+              "shrink-0 whitespace-nowrap"
             )}
           >
             {label}
           </Link>
         ))}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className={cn(
+              buttonVariants({ size: "xs", variant: "ghost" }),
+              "shrink-0"
+            )}
+          >
+            More
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {moreLinks.slice(4).map(({ href, label }) => (
+              <DropdownMenuItem
+                key={href}
+                className="cursor-pointer"
+                onClick={() => router.push(href)}
+              >
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </nav>
     </header>
   );

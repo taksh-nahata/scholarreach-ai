@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { PENDING_APPROVAL_STATUSES } from "@/lib/draft_status";
 
 export async function GET() {
   try {
@@ -9,7 +10,12 @@ export async function GET() {
     const [professors, draftsPending, scheduled, sent, sentHistory, recentQueue] =
       await Promise.all([
         prisma.professor.count({ where: { userId: user.id } }),
-        prisma.draft.count({ where: { userId: user.id, status: "pending" } }),
+        prisma.draft.count({
+          where: {
+            userId: user.id,
+            status: { in: [...PENDING_APPROVAL_STATUSES] },
+          },
+        }),
         prisma.scheduledEmail.count({
           where: { userId: user.id, status: "scheduled" },
         }),
@@ -18,7 +24,10 @@ export async function GET() {
         }),
         prisma.sentHistory.count({ where: { userId: user.id } }),
         prisma.scheduledEmail.findMany({
-          where: { userId: user.id },
+          where: {
+            userId: user.id,
+            status: { in: ["scheduled", "sending", "sent"] },
+          },
           orderBy: [{ status: "asc" }, { scheduledIso: "asc" }],
           take: 8,
           select: {
@@ -40,6 +49,8 @@ export async function GET() {
         email: user.email,
         name: user.name,
         gmailConnected: user.gmailConnected,
+        mailConnected: user.mailConnected,
+        mailProvider: user.mailProvider,
         dailySentCount: user.dailySentCount,
       },
       metrics: {

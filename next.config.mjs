@@ -14,7 +14,7 @@ const nextConfig = {
     : {}),
   eslint: { ignoreDuringBuilds: false },
   experimental: {
-    serverComponentsExternalPackages: ["pdf-parse"],
+    serverComponentsExternalPackages: ["pdf-parse", "unpdf"],
   },
 };
 

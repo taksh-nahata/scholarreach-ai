@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuthUser } from "@/lib/api-auth";
+import { createGmailOAuthState } from "@/lib/oauth_state";
 import {
   GMAIL_SEND_SCOPES,
   createOAuthClient,
@@ -14,9 +15,9 @@ function redirectBase(req: NextRequest) {
 }
 
 /**
- * Start Gmail access request (same idea as Apps Script authorizing GmailApp).
- * Login uses basic info only; this step separately asks for gmail.send so mail
- * goes From: the student's Gmail.
+ * Start Gmail access request.
+ * Login uses basic info only; this step asks for send + read so mail goes
+ * From: the student's Gmail and replies can be tracked.
  */
 export async function GET(req: NextRequest) {
   return withAuthUser(async (user) => {
@@ -40,19 +41,19 @@ export async function GET(req: NextRequest) {
     const client = createOAuthClient(redirectUri);
     const url = client.generateAuthUrl({
       access_type: "offline",
+      // Always force consent so Google issues a NEW refresh token after invalid_grant
       prompt: "consent",
       scope: GMAIL_SEND_SCOPES,
-      include_granted_scopes: true,
+      include_granted_scopes: false,
       login_hint: user.email,
-      state: user.id,
+      state: createGmailOAuthState(user.id),
     });
 
     return NextResponse.json({
       url,
       redirectUri,
       scopes: GMAIL_SEND_SCOPES,
-      familyLinkTip:
-        "Family Link 'basic info' covers login only. This step asks for Gmail send — your parent may need to approve when Google prompts (Ask every time).",
+      tip: "Login uses basic profile info only. This step requests Gmail send + read. Supervised accounts may need guardian approval when Google prompts.",
     });
   });
 }

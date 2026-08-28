@@ -3,6 +3,12 @@
  */
 import { prisma } from "@/lib/prisma";
 import { dripDispatcher } from "@/services/drip_dispatcher";
+import {
+  isSyntacticallyValidRecipient,
+  normalizeEmail,
+  strictDeliverabilityEnabled,
+} from "@/services/deliverability_guard";
+import { emailConfidenceTier } from "@/services/email_confidence";
 
 export async function approveDraftToQueue(opts: {
   userId: string;
@@ -19,10 +25,56 @@ export async function approveDraftToQueue(opts: {
 
   const toEmail = draft.recipientEmail || draft.professor?.email || "";
   if (!toEmail) throw new Error("No recipient email on draft");
+  if (!isSyntacticallyValidRecipient(toEmail)) {
+    throw new Error("Recipient email is invalid. Re-verify in Directory.");
+  }
 
-  const slot = dripDispatcher.isAcademicWindow()
+  const profEmail = normalizeEmail(draft.professor?.email || "");
+  const toLower = normalizeEmail(toEmail);
+  const looksLikeUnverifiedProfessor =
+    !!draft.professor &&
+    !draft.professor.emailVerified &&
+    (!profEmail || toLower === profEmail);
+  if (looksLikeUnverifiedProfessor) {
+    throw new Error(
+      "Professor email is not verified. Re-check in Directory or set a different To: address."
+    );
+  }
+  if (strictDeliverabilityEnabled()) {
+    if (!draft.professor) {
+      throw new Error(
+        "Strict deliverability mode: draft must be linked to a professor."
+      );
+    }
+    if (!draft.professor.emailVerified || !profEmail) {
+      throw new Error(
+        "Strict deliverability mode: only verified professor emails can be queued."
+      );
+    }
+    if (toLower !== profEmail) {
+      throw new Error(
+        "Strict deliverability mode: recipient must match the verified professor email."
+      );
+    }
+  }
+  if (draft.professor) {
+    const confidence = emailConfidenceTier({
+      email: toLower,
+      name: draft.professor.name,
+      university: draft.professor.university,
+      homepageUrl: draft.professor.homepageUrl,
+    });
+    if (confidence.tier === "low") {
+      throw new Error(
+        "Recipient confidence is low. Re-verify in Directory before queuing."
+      );
+    }
+  }
+
+  const university = draft.professor?.university || null;
+  const slot = dripDispatcher.isAcademicWindow(new Date(), university)
     ? new Date()
-    : dripDispatcher.getNextAcademicWindowSlot();
+    : dripDispatcher.getNextAcademicWindowSlot(new Date(), university);
 
   const reviewTag =
     opts.via === "agent"
@@ -35,7 +87,7 @@ export async function approveDraftToQueue(opts: {
         userId: opts.userId,
         professorId: draft.professorId,
         professorName: draft.professor?.name || null,
-        university: draft.professor?.university || null,
+        university,
         toEmail: toEmail.toLowerCase(),
         ccEmails:
           opts.ccEmails || draft.ccEmails || draft.professor?.ccEmails || null,
@@ -43,8 +95,9 @@ export async function approveDraftToQueue(opts: {
         body: draft.body,
         htmlBody: draft.htmlBody,
         scheduledIso: slot,
-        scheduledTime: dripDispatcher.formatSlot(slot),
+        scheduledTime: dripDispatcher.formatSlot(slot, university),
         status: "scheduled",
+        kind: "outreach",
       },
     }),
     prisma.draft.update({

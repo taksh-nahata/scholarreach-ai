@@ -1,6 +1,5 @@
 /**
- * Send from the student's real Gmail when OAuth is connected (Apps Script–style
- * permission, without Apps Script). Other providers are fallbacks only.
+ * Send from the student's real Gmail when OAuth is connected.
  */
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +9,7 @@ import {
   isPlatformMailConfigured,
   sendViaResend,
 } from "@/services/platform_mail";
+import { resolveOutboundAttachments } from "@/services/profile_attachments";
 
 export async function sendMailForUser(
   userId: string,
@@ -19,14 +19,42 @@ export async function sendMailForUser(
     subject: string;
     body: string;
     htmlBody?: string;
+    skipCvAttachment?: boolean;
+    professorFocus?: string | null;
+    professorUniversity?: string | null;
+    threadId?: string;
+    inReplyTo?: string;
+    references?: string;
   }
 ) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
-  // 1) Student's Gmail via OAuth (personal From: address)
+  const resolved =
+    opts.skipCvAttachment === true
+      ? { attachments: [] as Array<{ filename: string; mimeType: string; contentBase64: string }> }
+      : await resolveOutboundAttachments(userId, {
+          professorFocus: opts.professorFocus,
+          professorUniversity: opts.professorUniversity,
+          subject: opts.subject,
+          body: opts.body,
+        });
+
+  const attachments = resolved.attachments.map((a) => ({
+    filename: a.filename,
+    mimeType: a.mimeType,
+    contentBase64: a.contentBase64,
+  }));
+
+  // 1) Student's Gmail via OAuth
   if (user.gmailConnected && (user.googleRefreshToken || user.googleAccessToken)) {
-    return sendGmailForUser(userId, opts);
+    return sendGmailForUser(userId, {
+      ...opts,
+      attachments,
+      threadId: opts.threadId,
+      inReplyTo: opts.inReplyTo,
+      references: opts.references,
+    });
   }
 
   // 2) Outlook Graph
@@ -50,6 +78,14 @@ export async function sendMailForUser(
                 emailAddress: { address: a.trim() },
               }))
             : [],
+          attachments: attachments.length
+            ? attachments.map((a) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: a.filename,
+                contentType: a.mimeType,
+                contentBytes: a.contentBase64,
+              }))
+            : undefined,
         },
         saveToSentItems: true,
       }),
@@ -79,11 +115,18 @@ export async function sendMailForUser(
       text: opts.body,
       html: opts.htmlBody || undefined,
       replyTo: user.email,
+      attachments: attachments.length
+        ? attachments.map((a) => ({
+            filename: a.filename,
+            content: Buffer.from(a.contentBase64, "base64"),
+            contentType: a.mimeType,
+          }))
+        : undefined,
     });
     return { id: info.messageId };
   }
 
-  // 4) Optional platform mail (only if user explicitly enabled it)
+  // 4) Optional platform mail
   if (
     user.mailProvider === "platform" &&
     user.mailConnected &&
@@ -97,6 +140,6 @@ export async function sendMailForUser(
   }
 
   throw new Error(
-    "Gmail not connected. Open Connect Inbox → Request Gmail access (parent may need to approve)."
+    "Gmail not connected. Open Connect Inbox → Request Gmail access."
   );
 }

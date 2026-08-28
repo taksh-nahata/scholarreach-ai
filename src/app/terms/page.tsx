@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -8,28 +8,23 @@ export default function TermsPage() {
     <main className="relative min-h-screen">
       <div className="pointer-events-none absolute inset-0 desk-grid opacity-40" />
       <div className="relative z-10 mx-auto max-w-3xl px-6 py-12">
-        <Link href="/" className="mb-8 inline-flex items-center gap-2 font-semibold">
-          <span className="wax-seal flex size-8 items-center justify-center rounded-lg text-primary-foreground">
-            <Sparkles className="size-3.5" />
-          </span>
-          <span className="font-display">ScholarReach AI</span>
-        </Link>
+        <BrandLogo height={32} className="mb-8" />
 
         <h1 className="font-display text-4xl font-semibold tracking-tight">
           Terms of use
         </h1>
         <p className="mt-3 text-muted-foreground">
-          Student research outreach tooling — free forever on the Hobby plan.
+          Student research outreach tooling — free for all users right now.
         </p>
 
         <div className="mt-10 space-y-8 text-sm leading-relaxed">
           <section>
-            <h2 className="font-display text-xl font-semibold">Free student tier</h2>
+            <h2 className="font-display text-xl font-semibold">Free access</h2>
             <p className="mt-2 text-muted-foreground">
-              ScholarReach AI is free for high school and college students. No credit
-              card is required. Hosting uses Vercel Hobby and Neon free Postgres.
-              Optional mining APIs (when configured by the operator) may consume
-              operator-paid credits — not charged to students.
+              ScholarReach AI is free. No credit card is required. Paid plans are
+              not offered at this time. Optional mining APIs (when configured by
+              the operator) may consume operator-paid credits — not charged to
+              students.
             </p>
           </section>
 
@@ -46,7 +41,7 @@ export default function TermsPage() {
             <h2 className="font-display text-xl font-semibold">Email sending</h2>
             <p className="mt-2 text-muted-foreground">
               Live Gmail dispatch requires your OAuth consent. Academic-window
-              drip (Tue–Thu 8–9 AM, 500/hr cap) protects sender reputation.
+              drip (Tue–Thu 8–9 AM local, daily caps) protects sender reputation.
               Dry-run mode may be enabled to prevent accidental sends.
             </p>
           </section>

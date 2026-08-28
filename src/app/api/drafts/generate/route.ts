@@ -17,11 +17,15 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(result);
       }
       if (Array.isArray(body.professorIds)) {
-        const drafts = await generateDraftsForProfessors(
+        const { drafts, skipped } = await generateDraftsForProfessors(
           user.id,
           body.professorIds.map(String)
         );
-        return NextResponse.json({ drafts, count: drafts.length });
+        return NextResponse.json({
+          drafts,
+          skipped,
+          count: drafts.length,
+        });
       }
       return NextResponse.json(
         { error: "Provide professorId or professorIds" },

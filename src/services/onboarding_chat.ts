@@ -45,41 +45,26 @@ async function llmFollowUp(
   history: ChatMessage[],
   profileHint: string
 ): Promise<string | null> {
-  const base = process.env.PROVOCATIVE_BASE_URL;
-  const key = process.env.PROVOCATIVE_API_KEY;
-  const model = process.env.PRIMARY_MODEL || "qwen3.6-35b";
-  if (!base || !key) return null;
-
-  const res = await fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.5,
-      messages: [
-        {
-          role: "system",
-          content: `You help students remember achievements for research outreach emails.
+  const { chatCompletion } = await import("@/services/llm_client");
+  const result = await chatCompletion({
+    task: "chat",
+    temperature: 0.5,
+    messages: [
+      {
+        role: "system",
+        content: `You help students remember achievements for research outreach emails.
 Ask ONE specific follow-up question at a time. Be concise (2 sentences max).
 Never invent achievements. Use their profile context if helpful.
 Profile context:
-${profileHint.slice(0, 2000)}`,
-        },
-        ...history.slice(-10).map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      ],
-    }),
+${profileHint.slice(0, 900)}`,
+      },
+      ...history.slice(-6).map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content.slice(0, 500),
+      })),
+    ],
   });
-  if (!res.ok) return null;
-  const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return json.choices?.[0]?.message?.content?.trim() || null;
+  return result?.content || null;
 }
 
 function nextBankQuestion(history: ChatMessage[]): string | null {

@@ -1,22 +1,31 @@
 /**
- * Profile-aware faculty discovery.
- * Targets universities from the student's regions and topics from their interests/skills.
- * Conserves Exa: prefer Tavily snippets + Firecrawl; Exa only when budget remains.
+ * Profile-aware faculty discovery — FREE-first (OpenAlex), paid APIs last resort.
+ * Emails resolved via directory → personal/lab (never invent).
  */
 import { prisma } from "@/lib/prisma";
 import { normalizeDedupeKey, toJsonArray } from "@/lib/utils";
+import { mapPool } from "@/lib/async_pool";
 import { universitiesForRegions, topicsFromProfile } from "@/lib/university_pools";
 import { getProfileBundle } from "@/services/profile_service";
 import { scoreProfessorMatch, skillsToText } from "@/services/match_scorer";
+import { rankAuthorCandidate } from "@/services/author_ranking";
 import { tryConsumeApi } from "@/services/api_budget";
-import { exaClient } from "./exa_client";
-import { tavilyClient } from "./tavily_client";
-import { firecrawlClient } from "./firecrawl_client";
+import { resolveFacultyEmail } from "./faculty_email_resolver";
 import {
-  unscrambleEmail,
-  isPlaceholderEmail,
-  verifyFacultyEmail,
-} from "./faculty_email_verifier";
+  discoverFacultyAtUniversity,
+  type OpenAlexFaculty,
+} from "./openalex_client";
+import {
+  findRecentPaperRedundant,
+  loadPageTextRedundant,
+  searchTopicPagesRedundant,
+} from "./faculty_search";
+import {
+  classifyFacultyTitle,
+  inferTitleFromSignals,
+  isOutreachTargetRole,
+  normalizeTitleForStorage,
+} from "./faculty_role";
 
 async function extractFacultyData(
   pageText: string,
@@ -24,61 +33,167 @@ async function extractFacultyData(
   topicHint: string,
   userId: string
 ) {
-  const base = process.env.PROVOCATIVE_BASE_URL;
-  const key = process.env.PROVOCATIVE_API_KEY;
-  if (!base || !key) return null;
   if (!(await tryConsumeApi(userId, "llm", 1))) return null;
+  const { completePrompt } = await import("@/services/llm_client");
 
-  const prompt = `You are an AI data extractor for academic faculty pages.
-Student is looking for faculty related to: ${topicHint}
-Extract ONE faculty member who best matches that interest from the page.
-Return ONLY valid JSON.
+  const prompt = `Extract ONE faculty member matching: ${topicHint}
+Return ONLY JSON. Do NOT invent email (leave ""). Prefer single-faculty pages.
+Reject students/postdocs/rosters → {"valid":false}.
+title one of: Professor|Associate Professor|Assistant Professor|Principal Investigator|Research Scientist|Lecturer
 
-{
-  "valid": true,
-  "name": "Dr. Full Name",
-  "title": "Professor",
-  "email": "faculty@university.edu",
-  "ccEmails": [],
-  "specialInstructions": "",
-  "university": "${university}",
-  "lab_name": "Lab Name",
-  "research_focus": "3-8 word focus matching student interest when possible",
-  "recent_paper": "specific paper title if present else empty",
-  "location_mode": "Remote|Hybrid|In-person",
-  "tags": ["topic","tags"],
-  "fit_note": "one sentence why they match the student interest"
-}
+{"valid":true,"name":"Dr. Full Name","title":"Associate Professor","email":"","ccEmails":[],"specialInstructions":"","university":"${university}","lab_name":"","research_focus":"3-8 words","recent_paper":"","location_mode":"Remote|Hybrid|In-person","tags":[],"fit_note":"one sentence"}
 
-If the page is not a faculty profile, set "valid": false.
-
-Webpage:
-${pageText.substring(0, 5000)}`;
+Page:
+${pageText.substring(0, 3200)}`;
 
   try {
-    const response = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.PRIMARY_MODEL || "qwen3.6-35b",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.1,
-      }),
+    const contentRaw = await completePrompt({
+      user: prompt,
+      task: "extract",
     });
-    const data = (await response.json()) as {
-      choices?: Array<{ message: { content: string } }>;
-    };
-    let content = data.choices?.[0]?.message?.content?.trim() || "";
+    let content = (contentRaw || "").trim();
+    if (!content) return null;
     if (content.startsWith("```")) {
       content = content.replace(/```json/g, "").replace(/```/g, "").trim();
     }
-    return JSON.parse(content);
+    const match = content.match(/\{[\s\S]*\}/);
+    return JSON.parse(match ? match[0] : content);
   } catch {
     return null;
   }
+}
+
+export async function importFacultyLead(opts: {
+  userId: string;
+  name: string;
+  university: string;
+  title?: string;
+  labName?: string | null;
+  researchFocus?: string | null;
+  recentPaper?: string | null;
+  tags?: string[];
+  locationMode?: string;
+  hintUrl?: string | null;
+  specialInstructions?: string | null;
+  fitNote?: string | null;
+  worksCount?: number | null;
+  skillsText: string;
+  profile: {
+    researchInterests?: string | null;
+    workModePref?: string | null;
+    location?: string | null;
+  } | null;
+  minScore: number;
+}) {
+  const dedupeKey = normalizeDedupeKey(opts.name, opts.university);
+  const existing = await prisma.professor.findUnique({
+    where: { userId_dedupeKey: { userId: opts.userId, dedupeKey } },
+  });
+  if (existing) return { skipped: true as const, reason: "duplicate", existingId: existing.id };
+
+  const titleRaw =
+    opts.title ||
+    inferTitleFromSignals({
+      worksCount: opts.worksCount,
+      labName: opts.labName,
+    });
+  const role = classifyFacultyTitle(titleRaw, {
+    labName: opts.labName,
+    worksCount: opts.worksCount,
+  });
+  if (!isOutreachTargetRole(role) || role === "postdoc" || role === "student") {
+    return { skipped: true as const, reason: "not_faculty_role" };
+  }
+  const title = normalizeTitleForStorage(titleRaw, role);
+
+  const resolved = await resolveFacultyEmail({
+    userId: opts.userId,
+    name: opts.name,
+    university: opts.university,
+    hintUrl: opts.hintUrl,
+  });
+
+  let recentPaper = opts.recentPaper || null;
+  if (!recentPaper) {
+    recentPaper = await findRecentPaperRedundant(
+      opts.userId,
+      opts.name,
+      opts.university,
+      opts.researchFocus
+    );
+  }
+
+  const verifiedEmail = resolved.verified ? resolved.primaryEmail : null;
+  const emailVerified = !!resolved.verified && !!verifiedEmail;
+
+  const { score, reason } = scoreProfessorMatch({
+    researchInterests: opts.profile?.researchInterests,
+    skillsText: opts.skillsText,
+    workModePref: opts.profile?.workModePref,
+    location: opts.profile?.location,
+    professor: {
+      researchFocus: opts.researchFocus,
+      recentPaper,
+      labName: opts.labName,
+      tags: opts.tags || [],
+      locationMode: opts.locationMode,
+      university: opts.university,
+    },
+  });
+  if (score < opts.minScore) {
+    return { skipped: true as const, reason: "low_fit", matchScore: score };
+  }
+
+  const created = await prisma.professor.create({
+    data: {
+      userId: opts.userId,
+      name: opts.name,
+      title,
+      email: verifiedEmail,
+      ccEmails: toJsonArray([]),
+      university: opts.university,
+      labName: opts.labName || null,
+      researchFocus: opts.researchFocus || null,
+      recentPaper,
+      locationMode: opts.locationMode || "Remote",
+      tags: toJsonArray(opts.tags || []),
+      homepageUrl: resolved.sourceUrl || opts.hintUrl || null,
+      specialInstructions: opts.specialInstructions || null,
+      emailVerified,
+      verificationNotes: resolved.reasoning,
+      matchScore: score,
+      matchReason: opts.fitNote || reason || null,
+      dedupeKey,
+    },
+  });
+
+  return {
+    skipped: false as const,
+    id: created.id,
+    name: opts.name,
+    university: opts.university,
+    email: verifiedEmail,
+    emailVerified,
+    matchScore: score,
+    title,
+    role,
+  };
+}
+
+async function saveProfessor(
+  opts: Parameters<typeof importFacultyLead>[0]
+) {
+  const result = await importFacultyLead(opts);
+  if (result.skipped) return null;
+  return {
+    name: result.name,
+    university: result.university,
+    email: result.email,
+    emailVerified: result.emailVerified,
+    matchScore: result.matchScore,
+    title: result.title,
+    role: result.role,
+  };
 }
 
 export async function mineFreshLeads(userId: string, count = 10) {
@@ -103,132 +218,120 @@ export async function mineFreshLeads(userId: string, count = 10) {
   const mined: Array<{
     name: string;
     university: string;
-    email?: string;
+    email?: string | null;
+    emailVerified?: boolean;
     matchScore?: number;
   }> = [];
 
   const skillsText = skillsToText(skills);
   const minScore = Number(process.env.MIN_MATCH_SCORE || 40);
+  const profileLite = profile
+    ? {
+        researchInterests: profile.researchInterests,
+        workModePref: profile.workModePref,
+        location: profile.location,
+      }
+    : null;
 
   for (const university of universities) {
     if (mined.length >= count) break;
     const topic = topics[Math.floor(Math.random() * topics.length)];
+    const need = count - mined.length;
 
-    if (!(await tryConsumeApi(userId, "tavily", 1))) break;
-    const results = await tavilyClient.searchFacultyPages(university, topic, 2);
-
-    for (const result of results) {
-      if (mined.length >= count) break;
-
-      let text = result.snippet || "";
-      if (text.length < 200) {
-        if (await tryConsumeApi(userId, "firecrawl", 1)) {
-          const md = await firecrawlClient.scrapeUrl(result.url);
-          if (md) text = md;
-        }
-      }
-      if (text.length < 80 && (await tryConsumeApi(userId, "exa", 1))) {
-        text = await exaClient.searchWeb(
-          `"${result.title}" ${university} faculty ${topic}`
-        );
-      }
-      if (!text || text.length < 80) continue;
-
-      const extracted = await extractFacultyData(text, university, topic, userId);
-      if (!extracted?.valid || !extracted.name) continue;
-
-      const email = unscrambleEmail(extracted.email || "");
-      if (email && isPlaceholderEmail(email)) continue;
-
-      const dedupeKey = normalizeDedupeKey(extracted.name, university);
-      const existing = await prisma.professor.findUnique({
-        where: { userId_dedupeKey: { userId, dedupeKey } },
+    // 1) FREE primary: OpenAlex works → authors
+    let oaFaculty: OpenAlexFaculty[] = [];
+    try {
+      oaFaculty = await discoverFacultyAtUniversity({
+        university,
+        topic,
+        limit: Math.min(8, need + 3),
       });
-      if (existing) continue;
+    } catch (err) {
+      console.warn(`[Miner] OpenAlex fail`, err);
+    }
 
-      let verifiedEmail = email;
-      let ccEmails: string[] = extracted.ccEmails || [];
-      let emailVerified = false;
-      let verificationNotes = "";
-
-      const looksGood =
-        !!email && email.includes(".edu") && !isPlaceholderEmail(email);
-
-      if (!looksGood && (email || extracted.name)) {
-        if (await tryConsumeApi(userId, "exa", 1)) {
-          const verified = await verifyFacultyEmail(
-            extracted.name,
-            university,
-            email
-          );
-          verifiedEmail = verified.primaryEmail || email;
-          ccEmails = Array.from(
-            new Set([...(ccEmails || []), ...verified.ccEmails])
-          );
-          emailVerified = verified.verified;
-          verificationNotes = verified.reasoning;
-        }
-      } else if (looksGood) {
-        emailVerified = true;
-        verificationNotes =
-          "Accepted institutional email without Exa (budget save).";
-      }
-
-      if (!extracted.recent_paper && (await tryConsumeApi(userId, "exa", 1))) {
-        const paper = await exaClient.findRecentPaper(
-          extracted.name,
+    const ranked = oaFaculty
+      .map((fac) =>
+        rankAuthorCandidate({
+          candidate: fac,
           university,
-          extracted.research_focus || topic
-        );
-        if (paper) extracted.recent_paper = paper;
-      }
+          topic,
+          profile: profileLite,
+          skillsText,
+          existingEmail: null,
+        })
+      )
+      .sort((a, b) => b.total - a.total)
+      .slice(0, Math.min(need, 4));
 
-      const { score, reason } = scoreProfessorMatch({
-        researchInterests: profile?.researchInterests,
+    // Resolve 2 candidates at a time (email search is the slow part)
+    const savedBatch = await mapPool(ranked, 2, async (entry) => {
+      const fac = entry.candidate;
+      return saveProfessor({
+        userId,
+        name: fac.name,
+        university,
+        title: inferTitleFromSignals({
+          worksCount: fac.worksCount,
+          labName: null,
+        }),
+        researchFocus: fac.researchFocus,
+        recentPaper: fac.recentPaper,
+        tags: fac.tags,
+        hintUrl: fac.homepageUrl,
+        worksCount: fac.worksCount,
         skillsText,
-        workModePref: profile?.workModePref,
-        location: profile?.location,
-        professor: {
-          researchFocus: extracted.research_focus,
-          recentPaper: extracted.recent_paper,
-          labName: extracted.lab_name,
-          tags: extracted.tags || [],
-          locationMode: extracted.location_mode,
-          university,
-        },
+        profile: profileLite,
+        minScore,
+        fitNote: `OpenAlex rank=${entry.total} (${entry.reasons.join("; ")})`,
       });
+    });
+    for (const saved of savedBatch) {
+      if (saved && mined.length < count) mined.push(saved);
+    }
 
-      if (score < minScore) continue;
+    if (mined.length >= count) break;
 
-      await prisma.professor.create({
-        data: {
-          userId,
-          name: extracted.name,
-          title: extracted.title || "Professor",
-          email: verifiedEmail || null,
-          ccEmails: toJsonArray(ccEmails),
-          university,
-          labName: extracted.lab_name || null,
-          researchFocus: extracted.research_focus || null,
-          recentPaper: extracted.recent_paper || null,
-          locationMode: extracted.location_mode || "Remote",
-          tags: toJsonArray(extracted.tags || []),
-          homepageUrl: result.url,
-          specialInstructions: extracted.specialInstructions || null,
-          emailVerified,
-          verificationNotes,
-          matchScore: score,
-          matchReason: reason || extracted.fit_note || null,
-          dedupeKey,
-        },
-      });
+    // 2) Topic pages: free + Tavily in parallel, then extract
+    const pages = await searchTopicPagesRedundant(
+      userId,
+      university,
+      topic,
+      4,
+      { forceTavily: true }
+    );
+    const pageResults = await mapPool(pages.slice(0, 3), 2, async (result) => {
+      const text = await loadPageTextRedundant(userId, result);
+      if (!text || text.length < 80) return null;
 
-      mined.push({
+      const extracted = await extractFacultyData(
+        text,
+        university,
+        topic,
+        userId
+      );
+      if (!extracted?.valid || !extracted.name) return null;
+
+      return saveProfessor({
+        userId,
         name: extracted.name,
         university,
-        email: verifiedEmail,
-        matchScore: score,
+        title: extracted.title,
+        labName: extracted.lab_name,
+        researchFocus: extracted.research_focus,
+        recentPaper: extracted.recent_paper,
+        tags: extracted.tags || [],
+        locationMode: extracted.location_mode,
+        hintUrl: result.url,
+        specialInstructions: extracted.specialInstructions,
+        fitNote: extracted.fit_note,
+        skillsText,
+        profile: profileLite,
+        minScore,
       });
+    });
+    for (const saved of pageResults) {
+      if (saved && mined.length < count) mined.push(saved);
     }
   }
 
@@ -236,6 +339,11 @@ export async function mineFreshLeads(userId: string, count = 10) {
   return {
     mined: mined.length,
     leads: mined,
-    targeting: { regions, topics, universitiesTried: universities.slice(0, 8) },
+    targeting: {
+      regions,
+      topics,
+      universitiesTried: universities.slice(0, 8),
+      searchMode: "openalex_tavily_parallel",
+    },
   };
 }

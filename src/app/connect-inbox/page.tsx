@@ -24,6 +24,7 @@ function ConnectInboxInner() {
     mailConnected?: boolean;
     gmailConnected?: boolean;
     mailProvider?: string | null;
+    needsGmailReconnect?: boolean;
   }>({});
   const [googleReady, setGoogleReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -50,10 +51,20 @@ function ConnectInboxInner() {
     }
     if (params.get("error")) {
       const err = params.get("error") || "";
+      const friendly: Record<string, string> = {
+        access_denied:
+          "Gmail access was denied. If this is a supervised Google account, set third-party access to “Ask every time”, then approve when Google prompts.",
+        no_refresh_token:
+          "Google did not return a lasting login. Tap Reconnect again and accept ALL permissions on the consent screen.",
+        no_access_token: "Google did not return an access token. Try reconnecting again.",
+        gmail_probe_failed:
+          "Connected, but Gmail API rejected the login. Revoke ScholarReach under Google Account → Security → Third-party access, then reconnect.",
+        token_exchange_failed:
+          "Token exchange failed. Try again — if it keeps failing, the Google OAuth client may be misconfigured.",
+      };
       toast.error(
-        err === "access_denied"
-          ? "Google/parent denied Gmail access. On Family Link use “Ask every time”, then approve when prompted."
-          : `Gmail connect failed (${err}). Try again with your parent present.`
+        friendly[err] ||
+          `Gmail connect failed (${err}). Try again, or approve when Google asks a guardian.`
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,7 +90,11 @@ function ConnectInboxInner() {
     }
   }
 
-  const gmailReady = !!(status.gmailConnected || status.mailProvider === "gmail");
+  const gmailReady = !!(
+    status.gmailConnected &&
+    status.mailProvider === "gmail" &&
+    !status.needsGmailReconnect
+  );
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -88,8 +103,8 @@ function ConnectInboxInner() {
           Connect Gmail
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Request permission to send from your Gmail — same idea as authorizing
-          Apps Script, without Apps Script. Professors see your real address.
+          Authorize ScholarReach to send from your Gmail and detect professor
+          replies. Professors see your real address — not a shared platform inbox.
         </p>
       </div>
 
@@ -98,29 +113,40 @@ function ConnectInboxInner() {
           <Shield className="size-4" />
           <AlertTitle>Gmail connected</AlertTitle>
           <AlertDescription>
-            Sending uses your Google account{" "}
+            Sending and reply tracking use your Google account{" "}
             <Badge variant="secondary" className="ml-1">
-              gmail.send
+              send + read
             </Badge>
           </AlertDescription>
         </Alert>
       )}
 
+      {!gmailReady && (
+        <Alert variant="destructive">
+          <AlertTitle>Gmail needs reconnect</AlertTitle>
+          <AlertDescription className="text-sm">
+            Google rejected the saved login (
+            <code className="text-xs">invalid_grant</code>
+            ). Queued emails are on hold until you reconnect below. Tap{" "}
+            <strong>Request Gmail access</strong>, approve every permission
+            Google shows, then the next Tue–Thu morning window will send again.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Alert>
-        <AlertTitle>Family Link (what your dad sees)</AlertTitle>
+        <AlertTitle>Supervised Google accounts</AlertTitle>
         <AlertDescription className="flex flex-col gap-2 text-sm">
           <span>
-            <strong>Basic info</strong> = Sign in with Google (name + email) —
-            that matches login.
+            Sign-in only requests basic profile info (name + email). Connecting
+            Gmail separately requests send and read access so outreach can go
+            out from your address and replies can be tracked.
           </span>
           <span>
-            <strong>Ask every time</strong> = when we request Gmail send below,
-            Google should prompt him to approve (not the hard “not allowed”
-            wall).
-          </span>
-          <span>
-            After you connect once, it appears under{" "}
-            <em>Manage third-party app access</em>.
+            If a guardian manages the account, choose{" "}
+            <strong>Ask every time</strong> for third-party apps, then approve
+            when Google prompts. After connecting, manage access under Google
+            Account → Security → Third-party access.
           </span>
         </AlertDescription>
       </Alert>
@@ -131,8 +157,8 @@ function ConnectInboxInner() {
             Request Gmail access
           </CardTitle>
           <CardDescription>
-            Opens Google&apos;s permission screen for sending mail as you. Have
-            your parent nearby if Family Link asks them to approve.
+            Opens Google&apos;s permission screen for send + inbox read (reply
+            detection). Approve when prompted.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -163,8 +189,9 @@ function ConnectInboxInner() {
             {gmailReady ? "Reconnect Gmail access" : "Request Gmail access"}
           </Button>
           <p className="text-xs text-muted-foreground">
-            First sign in with email/password (or Google basic info), then tap
-            this. Scope: send email only — not full mailbox read.
+            Sign in first, then tap this. Scopes: send mail from your address and
+            read mail to detect professor replies. Reconnect after any permission
+            update.
           </p>
         </CardContent>
       </Card>
