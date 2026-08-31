@@ -564,7 +564,9 @@ export default function SettingsPage() {
             <AlertTitle>How mining works</AlertTitle>
             <AlertDescription>
               Faculty mining uses your onboarding regions + research interests.
-              Extra search APIs are only used when needed — not on every lead.
+              Paid search (Tavily/Firecrawl/Exa) is tried when free results are
+              thin — if credits run out, it falls back to OpenAlex and free web
+              fetch automatically.
             </AlertDescription>
           </Alert>
         </CardContent>

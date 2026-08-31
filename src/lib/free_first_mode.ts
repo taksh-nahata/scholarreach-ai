@@ -1,6 +1,6 @@
-/** When true: skip paid search + LLM mining; prefer OpenAlex/templates only. */
+/** When true: never call paid search/scrape APIs (OpenAlex + free fetch only). */
 export function freeFirstMode(): boolean {
-  return (process.env.FREE_FIRST_MODE || "true").toLowerCase() === "true";
+  return (process.env.FREE_FIRST_MODE || "false").toLowerCase() === "true";
 }
 
 export function llmEmailDraftsEnabled(): boolean {

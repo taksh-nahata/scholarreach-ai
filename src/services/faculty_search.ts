@@ -1,15 +1,14 @@
 /**
  * Redundant faculty search facade:
- *   FREE + Tavily in parallel (when budget allows)
- *   Page text: free fetch → Firecrawl → Exa (with timeouts + host filters)
+ *   FREE first → paid APIs only when free is thin (budget/errors → free fallback)
+ *   Page text: free fetch → Firecrawl → Exa (each optional)
  */
 import type { SearchHit } from "./tavily_client";
 import { tavilyClient } from "./tavily_client";
 import { firecrawlClient } from "./firecrawl_client";
 import { exaClient } from "./exa_client";
-import { tryConsumeApi } from "./api_budget";
+import { tryPaidApi } from "@/lib/paid_api_fallback";
 import { fetchPageText } from "./page_fetch";
-import { freeFirstMode } from "@/lib/free_first_mode";
 import {
   discoverFacultyAtUniversity,
   findRecentPaperFree,
@@ -58,7 +57,7 @@ function qualityHitCount(hits: SearchHit[]): number {
   }).length;
 }
 
-/** Use Tavily when free results are thin/junk — or always if force=true. */
+/** Paid search only when free results are thin. */
 function needsPaidSearch(freeHits: SearchHit[], force = false): boolean {
   if (force) return true;
   if (freeHits.length < 2) return true;
@@ -71,7 +70,6 @@ async function maybeTavily(
   run: () => Promise<SearchHit[]>,
   force = false
 ): Promise<SearchHit[]> {
-  if (freeFirstMode()) return [];
   if (!tavilyClient.configured) return [];
   if (!needsPaidSearch(freeHits, force)) {
     console.log(
@@ -79,20 +77,13 @@ async function maybeTavily(
     );
     return [];
   }
-  // Call first; only burn budget on non-empty success (plan-limit returns [])
-  const paid = await run();
-  if (!paid.length) return [];
-  if (!(await tryConsumeApi(userId, "tavily", 1))) {
-    console.warn("[Search] Tavily hits discarded — daily budget exhausted");
-    return [];
-  }
-  return paid;
+  const paid = await tryPaidApi(userId, "tavily", "Tavily search", run, (h) =>
+    Array.isArray(h) && h.length > 0
+  );
+  return paid || [];
 }
 
-/**
- * Run free + Tavily in parallel when Tavily is likely needed.
- * For topic mining (`forceTavily`), always attempt Tavily alongside free.
- */
+/** Free search always runs; paid Tavily merges in only when free is thin or forced. */
 async function searchWithTavilyBackup(opts: {
   userId: string;
   free: () => Promise<SearchHit[]>;
@@ -100,41 +91,28 @@ async function searchWithTavilyBackup(opts: {
   forceTavily?: boolean;
   limit: number;
 }): Promise<SearchHit[]> {
-  const force = Boolean(opts.forceTavily);
-
-  if (!tavilyClient.configured) {
-    return uniqHits(await opts.free()).slice(0, opts.limit);
-  }
-
-  // Parallel path: start free immediately; start Tavily if force or after peeking free is slow —
-  // We kick both when force, otherwise free first then Tavily if needed (still fast with basic depth).
-  if (force) {
-    const freeP = opts.free();
-    const paidP = (async () => {
-      if (!tavilyClient.configured) return [] as SearchHit[];
-      const paid = await opts.tavily();
-      if (!paid.length) return [];
-      if (!(await tryConsumeApi(opts.userId, "tavily", 1))) return [];
-      return paid;
-    })();
-    const [freeHits, paidHits] = await Promise.all([freeP, paidP]);
-    console.log(
-      `[Search] parallel free=${freeHits.length} tavily=${paidHits.length} force=1`
-    );
-    return uniqHits([...freeHits, ...paidHits]).slice(0, opts.limit);
-  }
-
   const freeHits = await opts.free();
-  const paidHits = await maybeTavily(opts.userId, freeHits, opts.tavily, false);
+  const paidHits = tavilyClient.configured
+    ? await maybeTavily(
+        opts.userId,
+        freeHits,
+        opts.tavily,
+        Boolean(opts.forceTavily)
+      )
+    : [];
+
   if (paidHits.length) {
     console.log(
       `[Search] free=${freeHits.length} + tavily=${paidHits.length}`
     );
+  } else if (freeHits.length) {
+    console.log(`[Search] free-only=${freeHits.length}`);
   }
+
   return uniqHits([...freeHits, ...paidHits]).slice(0, opts.limit);
 }
 
-/** Load page text: free fetch → Firecrawl → Exa (last). */
+/** Load page text: free fetch → Firecrawl → Exa (each skipped on budget/error). */
 export async function loadPageTextRedundant(
   userId: string,
   hit: SearchHit
@@ -143,7 +121,6 @@ export async function loadPageTextRedundant(
   if (text.length >= 500) return text;
 
   if (BAD_SCRAPE_HOSTS.test(hit.url || "")) {
-    // Don't waste Firecrawl on social/wiki — free fetch only
     const free = await fetchPageText(hit.url);
     return free.length > text.length ? free : text;
   }
@@ -152,25 +129,33 @@ export async function loadPageTextRedundant(
   if (free.length > text.length) text = free;
   if (text.length >= 400) return text;
 
-  if (
-    !freeFirstMode() &&
-    firecrawlClient.configured &&
-    (await tryConsumeApi(userId, "firecrawl", 1))
-  ) {
-    const md = await firecrawlClient.scrapeUrl(hit.url);
+  if (firecrawlClient.configured) {
+    const md = await tryPaidApi(
+      userId,
+      "firecrawl",
+      `Firecrawl ${hit.url?.slice(0, 60)}`,
+      () => firecrawlClient.scrapeUrl(hit.url),
+      (s) => typeof s === "string" && s.length > 50
+    );
     if (md && md.length > text.length) text = md;
   }
   if (text.length >= 200) return text;
 
-  if (
-    !freeFirstMode() &&
-    exaClient.configured &&
-    (await tryConsumeApi(userId, "exa", 1))
-  ) {
-    const exaText = await exaClient.searchWeb(
-      `site:${safeHost(hit.url)} ${hit.title || ""}`.trim()
+  if (exaClient.configured) {
+    const exaText = await tryPaidApi(
+      userId,
+      "exa",
+      `Exa page ${safeHost(hit.url)}`,
+      () =>
+        exaClient.searchWeb(
+          `site:${safeHost(hit.url)} ${hit.title || ""}`.trim()
+        ),
+      (s) =>
+        typeof s === "string" &&
+        s.length > 50 &&
+        !s.startsWith("No results")
     );
-    if (exaText && exaText.length > 50 && !exaText.startsWith("No results")) {
+    if (exaText) {
       text = `${text}\n${exaText}`.trim();
     }
   }
@@ -230,12 +215,12 @@ export async function searchTopicPagesRedundant(
     userId,
     free: () => freeFacultyTopicSearch(university, topic, limit),
     tavily: () => tavilyClient.searchFacultyPages(university, topic, limit),
-    forceTavily: opts?.forceTavily ?? true, // mining path always backs up with Tavily
+    forceTavily: opts?.forceTavily ?? false,
     limit,
   });
 }
 
-/** Paper title: OpenAlex → S2 → Crossref → Exa last. */
+/** Paper title: OpenAlex → S2 → Crossref → Exa last (optional). */
 export async function findRecentPaperRedundant(
   userId: string,
   name: string,
@@ -258,8 +243,15 @@ export async function findRecentPaperRedundant(
   );
   if (cr[0]?.title) return cr[0].title;
 
-  if (exaClient.configured && !freeFirstMode() && (await tryConsumeApi(userId, "exa", 1))) {
-    return exaClient.findRecentPaper(name, university, researchFocus || "");
+  if (exaClient.configured) {
+    const exa = await tryPaidApi(
+      userId,
+      "exa",
+      "Exa recent paper",
+      () => exaClient.findRecentPaper(name, university, researchFocus || ""),
+      (t) => typeof t === "string" && t.length > 8
+    );
+    if (exa) return exa;
   }
   return null;
 }
@@ -283,7 +275,7 @@ export async function discoverFacultyRedundant(opts: {
     opts.university,
     opts.topic,
     3,
-    { forceTavily: true }
+    { forceTavily: false }
   );
   return fromOA;
 }

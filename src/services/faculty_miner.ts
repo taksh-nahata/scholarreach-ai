@@ -9,7 +9,6 @@ import { universitiesForRegions, topicsFromProfile } from "@/lib/university_pool
 import { getProfileBundle } from "@/services/profile_service";
 import { scoreProfessorMatch, skillsToText } from "@/services/match_scorer";
 import { rankAuthorCandidate } from "@/services/author_ranking";
-import { tryConsumeApi } from "@/services/api_budget";
 import { resolveFacultyEmail } from "./faculty_email_resolver";
 import {
   discoverFacultyAtUniversity,
@@ -26,7 +25,8 @@ import {
   isOutreachTargetRole,
   normalizeTitleForStorage,
 } from "./faculty_role";
-import { freeFirstMode } from "@/lib/free_first_mode";
+import { tryPaidApi } from "@/lib/paid_api_fallback";
+import { extractFacultyHeuristic } from "./faculty_page_heuristic";
 
 async function extractFacultyData(
   pageText: string,
@@ -34,10 +34,15 @@ async function extractFacultyData(
   topicHint: string,
   userId: string
 ) {
-  if (!(await tryConsumeApi(userId, "llm", 1))) return null;
-  const { completePrompt } = await import("@/services/llm_client");
+  const heuristic = extractFacultyHeuristic(pageText, university, topicHint);
 
-  const prompt = `Extract ONE faculty member matching: ${topicHint}
+  const llmResult = await tryPaidApi(
+    userId,
+    "llm",
+    "Faculty page extract",
+    async () => {
+      const { completePrompt } = await import("@/services/llm_client");
+      const prompt = `Extract ONE faculty member matching: ${topicHint}
 Return ONLY JSON. Do NOT invent email (leave ""). Prefer single-faculty pages.
 Reject students/postdocs/rosters → {"valid":false}.
 title one of: Professor|Associate Professor|Assistant Professor|Principal Investigator|Research Scientist|Lecturer
@@ -47,21 +52,23 @@ title one of: Professor|Associate Professor|Assistant Professor|Principal Invest
 Page:
 ${pageText.substring(0, 3200)}`;
 
-  try {
-    const contentRaw = await completePrompt({
-      user: prompt,
-      task: "extract",
-    });
-    let content = (contentRaw || "").trim();
-    if (!content) return null;
-    if (content.startsWith("```")) {
-      content = content.replace(/```json/g, "").replace(/```/g, "").trim();
-    }
-    const match = content.match(/\{[\s\S]*\}/);
-    return JSON.parse(match ? match[0] : content);
-  } catch {
-    return null;
-  }
+      const contentRaw = await completePrompt({
+        user: prompt,
+        task: "extract",
+      });
+      let content = (contentRaw || "").trim();
+      if (!content) return null;
+      if (content.startsWith("```")) {
+        content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+      }
+      const match = content.match(/\{[\s\S]*\}/);
+      return JSON.parse(match ? match[0] : content);
+    },
+    (parsed) => !!parsed?.valid && !!parsed?.name
+  );
+
+  if (llmResult?.valid && llmResult?.name) return llmResult;
+  return heuristic?.valid ? heuristic : null;
 }
 
 export async function importFacultyLead(opts: {
@@ -293,9 +300,7 @@ export async function mineFreshLeads(userId: string, count = 10) {
 
     if (mined.length >= count) break;
 
-    // 2) Topic pages: paid Tavily + LLM extract (skip in free-first mode)
-    if (freeFirstMode()) continue;
-
+    // 2) Topic pages: free search + optional Tavily; LLM or heuristic extract
     const pages = await searchTopicPagesRedundant(
       userId,
       university,
