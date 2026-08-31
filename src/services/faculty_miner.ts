@@ -26,6 +26,7 @@ import {
   isOutreachTargetRole,
   normalizeTitleForStorage,
 } from "./faculty_role";
+import { freeFirstMode } from "@/lib/free_first_mode";
 
 async function extractFacultyData(
   pageText: string,
@@ -292,13 +293,15 @@ export async function mineFreshLeads(userId: string, count = 10) {
 
     if (mined.length >= count) break;
 
-    // 2) Topic pages: free + Tavily in parallel, then extract
+    // 2) Topic pages: paid Tavily + LLM extract (skip in free-first mode)
+    if (freeFirstMode()) continue;
+
     const pages = await searchTopicPagesRedundant(
       userId,
       university,
       topic,
       4,
-      { forceTavily: true }
+      { forceTavily: false }
     );
     const pageResults = await mapPool(pages.slice(0, 3), 2, async (result) => {
       const text = await loadPageTextRedundant(userId, result);

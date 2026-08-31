@@ -88,6 +88,7 @@ const vars = {
   NOVITA_MODEL_QUALITY:
     local.NOVITA_MODEL_QUALITY || "meta-llama/llama-3.1-8b-instruct",
   USE_LLM_EMAIL_DRAFTS: local.USE_LLM_EMAIL_DRAFTS || "false",
+  FREE_FIRST_MODE: local.FREE_FIRST_MODE || "true",
   EXA_API_KEY: local.EXA_API_KEY || "",
   TAVILY_API_KEY: local.TAVILY_API_KEY || "",
   FIRECRAWL_API_KEY: local.FIRECRAWL_API_KEY || "",

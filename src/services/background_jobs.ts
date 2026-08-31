@@ -9,6 +9,7 @@ import {
   scoreEmailCandidate,
 } from "@/services/faculty_email_verifier";
 import { PENDING_APPROVAL_STATUSES } from "@/lib/draft_status";
+import { freeFirstMode } from "@/lib/free_first_mode";
 
 export type JobLogEntry = { at: string; msg: string };
 
@@ -532,7 +533,10 @@ export async function tickUserJobs(
     } else if (preferred.type === "email_reverify") {
       result = await tickEmailReverifyJob(userId, 6);
     } else if (preferred.type === "draft_generate") {
-      result = await tickDraftGenerateJob(userId, 1);
+      result = await tickDraftGenerateJob(
+        userId,
+        freeFirstMode() ? 3 : 1
+      );
     } else if (preferred.type === "approval_sweep") {
       result = await tickApprovalSweepJob(userId, 6);
     }

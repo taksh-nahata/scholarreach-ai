@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getProfileBundle } from "@/services/profile_service";
 import { tryConsumeApi } from "@/services/api_budget";
+import { freeFirstMode } from "@/lib/free_first_mode";
 import { applyAgentGateToDraft } from "@/services/pending_approvals_sweep";
 import {
   hasUploadedCv,
@@ -679,6 +680,7 @@ PROFILE BRIEF (only use real facts — pick what fits THIS faculty / paper):
 ${brief.slice(0, 1800)}`;
 
   const allowLlm =
+    !freeFirstMode() &&
     (process.env.USE_LLM_EMAIL_DRAFTS || "false").toLowerCase() === "true" &&
     !!paper &&
     isUsablePaperTitle(paper);

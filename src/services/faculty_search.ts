@@ -9,6 +9,7 @@ import { firecrawlClient } from "./firecrawl_client";
 import { exaClient } from "./exa_client";
 import { tryConsumeApi } from "./api_budget";
 import { fetchPageText } from "./page_fetch";
+import { freeFirstMode } from "@/lib/free_first_mode";
 import {
   discoverFacultyAtUniversity,
   findRecentPaperFree,
@@ -70,6 +71,7 @@ async function maybeTavily(
   run: () => Promise<SearchHit[]>,
   force = false
 ): Promise<SearchHit[]> {
+  if (freeFirstMode()) return [];
   if (!tavilyClient.configured) return [];
   if (!needsPaidSearch(freeHits, force)) {
     console.log(
@@ -150,13 +152,21 @@ export async function loadPageTextRedundant(
   if (free.length > text.length) text = free;
   if (text.length >= 400) return text;
 
-  if (firecrawlClient.configured && (await tryConsumeApi(userId, "firecrawl", 1))) {
+  if (
+    !freeFirstMode() &&
+    firecrawlClient.configured &&
+    (await tryConsumeApi(userId, "firecrawl", 1))
+  ) {
     const md = await firecrawlClient.scrapeUrl(hit.url);
     if (md && md.length > text.length) text = md;
   }
   if (text.length >= 200) return text;
 
-  if (exaClient.configured && (await tryConsumeApi(userId, "exa", 1))) {
+  if (
+    !freeFirstMode() &&
+    exaClient.configured &&
+    (await tryConsumeApi(userId, "exa", 1))
+  ) {
     const exaText = await exaClient.searchWeb(
       `site:${safeHost(hit.url)} ${hit.title || ""}`.trim()
     );
@@ -248,7 +258,7 @@ export async function findRecentPaperRedundant(
   );
   if (cr[0]?.title) return cr[0].title;
 
-  if (exaClient.configured && (await tryConsumeApi(userId, "exa", 1))) {
+  if (exaClient.configured && !freeFirstMode() && (await tryConsumeApi(userId, "exa", 1))) {
     return exaClient.findRecentPaper(name, university, researchFocus || "");
   }
   return null;
