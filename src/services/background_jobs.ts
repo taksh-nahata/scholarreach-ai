@@ -9,7 +9,11 @@ import {
   scoreEmailCandidate,
 } from "@/services/faculty_email_verifier";
 import { PENDING_APPROVAL_STATUSES } from "@/lib/draft_status";
-import { freeFirstMode } from "@/lib/free_first_mode";
+import { parseJsonArray, toJsonArray } from "@/lib/utils";
+import {
+  formatCcForStorage,
+  normalizeCcList,
+} from "@/services/outreach_recipients";
 
 export type JobLogEntry = { at: string; msg: string };
 
@@ -233,6 +237,12 @@ export async function tickEmailReverifyJob(userId: string, batchSize = 3) {
         allowLiveResolve: !p.email || isJunkFacultyEmail(p.email),
       });
 
+      const ccMerged = normalizeCcList(
+        [...parseJsonArray(p.ccEmails), ...(applied.ccEmails || [])],
+        applied.email,
+        3
+      );
+
       await prisma.professor.update({
         where: { id: p.id },
         data: {
@@ -240,6 +250,7 @@ export async function tickEmailReverifyJob(userId: string, batchSize = 3) {
           emailVerified: applied.emailVerified,
           verificationNotes: applied.verificationNotes,
           homepageUrl: applied.sourceUrl || p.homepageUrl,
+          ccEmails: toJsonArray(ccMerged),
         },
       });
 
@@ -251,6 +262,18 @@ export async function tickEmailReverifyJob(userId: string, batchSize = 3) {
             status: { in: [...PENDING_APPROVAL_STATUSES] },
           },
           data: { recipientEmail: applied.email },
+        });
+      }
+
+      if (ccMerged.length) {
+        const ccStorage = formatCcForStorage(ccMerged);
+        await prisma.draft.updateMany({
+          where: {
+            userId,
+            professorId: p.id,
+            status: { in: [...PENDING_APPROVAL_STATUSES] },
+          },
+          data: { ccEmails: ccStorage },
         });
       }
 
@@ -533,10 +556,7 @@ export async function tickUserJobs(
     } else if (preferred.type === "email_reverify") {
       result = await tickEmailReverifyJob(userId, 6);
     } else if (preferred.type === "draft_generate") {
-      result = await tickDraftGenerateJob(
-        userId,
-        freeFirstMode() ? 3 : 1
-      );
+      result = await tickDraftGenerateJob(userId, 3);
     } else if (preferred.type === "approval_sweep") {
       result = await tickApprovalSweepJob(userId, 6);
     }

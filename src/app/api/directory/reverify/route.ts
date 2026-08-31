@@ -7,6 +7,11 @@ import {
   scoreEmailCandidate,
 } from "@/services/faculty_email_verifier";
 import { PENDING_APPROVAL_STATUSES } from "@/lib/draft_status";
+import { parseJsonArray, toJsonArray } from "@/lib/utils";
+import {
+  formatCcForStorage,
+  normalizeCcList,
+} from "@/services/outreach_recipients";
 
 export const maxDuration = 60;
 
@@ -72,6 +77,12 @@ export async function POST(req: NextRequest) {
         allowLiveResolve: !p.email || isJunkFacultyEmail(p.email),
       });
 
+      const ccMerged = normalizeCcList(
+        [...parseJsonArray(p.ccEmails), ...(applied.ccEmails || [])],
+        applied.email,
+        3
+      );
+
       await prisma.professor.update({
         where: { id: p.id },
         data: {
@@ -79,6 +90,7 @@ export async function POST(req: NextRequest) {
           emailVerified: applied.emailVerified,
           verificationNotes: applied.verificationNotes,
           homepageUrl: applied.sourceUrl || p.homepageUrl,
+          ccEmails: toJsonArray(ccMerged),
         },
       });
 
@@ -90,6 +102,17 @@ export async function POST(req: NextRequest) {
             status: { in: [...PENDING_APPROVAL_STATUSES] },
           },
           data: { recipientEmail: applied.email },
+        });
+      }
+
+      if (ccMerged.length) {
+        await prisma.draft.updateMany({
+          where: {
+            userId: user.id,
+            professorId: p.id,
+            status: { in: [...PENDING_APPROVAL_STATUSES] },
+          },
+          data: { ccEmails: formatCcForStorage(ccMerged) },
         });
       }
 

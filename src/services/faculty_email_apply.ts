@@ -7,13 +7,43 @@ import {
   resolveFacultyEmail,
 } from "@/services/faculty_email_resolver";
 import { isJunkFacultyEmail } from "@/services/faculty_email_verifier";
+import { loadPageTextRedundant } from "@/services/faculty_search";
+import { pickCcRecipients } from "@/services/outreach_recipients";
 
 export type ApplyEmailResult = {
   email: string | null;
   emailVerified: boolean;
   verificationNotes: string;
   sourceUrl?: string | null;
+  ccEmails?: string[];
 };
+
+async function harvestCcFromHomepage(opts: {
+  userId: string;
+  name: string;
+  university: string;
+  email: string;
+  homepageUrl?: string | null;
+}): Promise<string[]> {
+  if (!opts.homepageUrl || !opts.email) return [];
+  try {
+    const text = await loadPageTextRedundant(opts.userId, {
+      title: opts.name,
+      url: opts.homepageUrl,
+      snippet: "",
+    });
+    if (!text || text.length < 40) return [];
+    return pickCcRecipients({
+      primaryEmail: opts.email,
+      pageText: text,
+      name: opts.name,
+      university: opts.university,
+      max: 2,
+    });
+  } catch {
+    return [];
+  }
+}
 
 export async function applyFacultyEmailCheck(opts: {
   userId: string;
@@ -34,11 +64,22 @@ export async function applyFacultyEmailCheck(opts: {
       homepageUrl: opts.homepageUrl,
     });
     if (audited.keep && audited.verified) {
+      const trustedEmail = audited.email || existing;
+      const ccEmails = trustedEmail
+        ? await harvestCcFromHomepage({
+            userId: opts.userId,
+            name: opts.name,
+            university: opts.university,
+            email: trustedEmail,
+            homepageUrl: opts.homepageUrl,
+          })
+        : [];
       return {
-        email: audited.email,
+        email: trustedEmail,
         emailVerified: true,
         verificationNotes: `Trusted stored email (${audited.notes})`,
         sourceUrl: opts.homepageUrl || null,
+        ccEmails,
       };
     }
     // Strong enough to keep; only live-resolve if we still want evidence
@@ -66,11 +107,23 @@ export async function applyFacultyEmailCheck(opts: {
         hintUrl: opts.homepageUrl,
       });
       if (resolved.verified && resolved.primaryEmail) {
+        const email = resolved.primaryEmail.toLowerCase();
+        const ccEmails =
+          resolved.ccEmails?.length
+            ? resolved.ccEmails
+            : await harvestCcFromHomepage({
+                userId: opts.userId,
+                name: opts.name,
+                university: opts.university,
+                email,
+                homepageUrl: resolved.sourceUrl || opts.homepageUrl,
+              });
         return {
-          email: resolved.primaryEmail.toLowerCase(),
+          email,
           emailVerified: true,
           verificationNotes: resolved.reasoning,
           sourceUrl: resolved.sourceUrl,
+          ccEmails,
         };
       }
       return {

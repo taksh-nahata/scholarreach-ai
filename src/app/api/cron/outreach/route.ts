@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   }
 
   const jobTicks = await tickAllRunningJobs(15);
-  const autopilot = await runDailyAutopilot(5, { tickRounds: 8 });
+  const autopilot = await runDailyAutopilot(5, { tickRounds: 12 });
   const before = await assessOutreachHealth();  // Prefer in-window sends; self-heal rolls overdue out-of-window items
   const heal = await selfHealOutreach({ limit: 12 });
   let drip = heal.results;

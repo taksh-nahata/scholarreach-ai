@@ -8,6 +8,11 @@ import { isJunkFacultyEmail } from "@/services/faculty_email_verifier";
 import { reviewDraftAsStudent } from "@/services/draft_reviewer";
 import { approveDraftToQueue } from "@/services/approval_service";
 import { countHumanApprovals } from "@/services/approval_service";
+import { parseJsonArray, toJsonArray } from "@/lib/utils";
+import {
+  formatCcForStorage,
+  normalizeCcList,
+} from "@/services/outreach_recipients";
 
 export type SweepResult = {
   emailChecks: Array<{
@@ -48,9 +53,15 @@ async function reverifyProfessorForDraft(
 
   const email = applied.email;
   const emailVerified = applied.emailVerified;
+  const ccMerged = normalizeCcList(
+    [...parseJsonArray(professor.ccEmails), ...(applied.ccEmails || [])],
+    email,
+    3
+  );
   const changed =
     (professor.email || null) !== email ||
-    professor.emailVerified !== emailVerified;
+    professor.emailVerified !== emailVerified ||
+    toJsonArray(ccMerged) !== (professor.ccEmails || "[]");
 
   await prisma.professor.update({
     where: { id: professor.id },
@@ -59,6 +70,7 @@ async function reverifyProfessorForDraft(
       emailVerified,
       verificationNotes: applied.verificationNotes,
       homepageUrl: applied.sourceUrl || professor.homepageUrl,
+      ccEmails: toJsonArray(ccMerged),
     },
   });
 
@@ -69,7 +81,12 @@ async function reverifyProfessorForDraft(
         professorId: professor.id,
         status: { in: [...PENDING_APPROVAL_STATUSES] },
       },
-      data: { recipientEmail: email },
+      data: {
+        recipientEmail: email,
+        ...(ccMerged.length
+          ? { ccEmails: formatCcForStorage(ccMerged) }
+          : {}),
+      },
     });
   }
 
