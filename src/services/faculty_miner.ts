@@ -3,7 +3,8 @@
  * Emails resolved via directory → personal/lab (never invent).
  */
 import { prisma } from "@/lib/prisma";
-import { normalizeDedupeKey, toJsonArray } from "@/lib/utils";
+import { normalizeDedupeKey, parseJsonArray, toJsonArray } from "@/lib/utils";
+import { normalizeCcList } from "@/services/outreach_recipients";
 import { mapPool } from "@/lib/async_pool";
 import { universitiesForRegions, topicsFromProfile } from "@/lib/university_pools";
 import { getProfileBundle } from "@/services/profile_service";
@@ -82,6 +83,7 @@ export async function importFacultyLead(opts: {
   tags?: string[];
   locationMode?: string;
   hintUrl?: string | null;
+  ccEmails?: string[];
   specialInstructions?: string | null;
   fitNote?: string | null;
   worksCount?: number | null;
@@ -152,13 +154,22 @@ export async function importFacultyLead(opts: {
     return { skipped: true as const, reason: "low_fit", matchScore: score };
   }
 
+  const ccMerged = normalizeCcList(
+    [
+      ...(opts.ccEmails || []),
+      ...(resolved.ccEmails || []),
+    ],
+    verifiedEmail,
+    3
+  );
+
   const created = await prisma.professor.create({
     data: {
       userId: opts.userId,
       name: opts.name,
       title,
       email: verifiedEmail,
-      ccEmails: toJsonArray([]),
+      ccEmails: toJsonArray(ccMerged),
       university: opts.university,
       labName: opts.labName || null,
       researchFocus: opts.researchFocus || null,
@@ -331,6 +342,13 @@ export async function mineFreshLeads(userId: string, count = 10) {
         tags: extracted.tags || [],
         locationMode: extracted.location_mode,
         hintUrl: result.url,
+        ccEmails: Array.isArray(extracted.ccEmails)
+          ? extracted.ccEmails
+          : parseJsonArray(
+              typeof extracted.ccEmails === "string"
+                ? extracted.ccEmails
+                : null
+            ),
         specialInstructions: extracted.specialInstructions,
         fitNote: extracted.fit_note,
         skillsText,

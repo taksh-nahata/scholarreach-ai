@@ -22,9 +22,11 @@ import {
   searchDirectoryRedundant,
   searchPersonalRedundant,
 } from "./faculty_search";
+import { pickCcRecipients } from "./outreach_recipients";
 
 export interface ResolveEmailResult {
   primaryEmail: string;
+  ccEmails?: string[];
   sourceUrl: string | null;
   verified: boolean;
   reasoning: string;
@@ -117,12 +119,22 @@ function tryExtractFromPage(
     homepageUrl: url,
   });
   if (!best) return null;
+  const ccEmails = pickCcRecipients({
+    primaryEmail: best.email,
+    pageText,
+    name,
+    university,
+    max: 2,
+  });
   return {
     primaryEmail: best.email,
+    ccEmails,
     sourceUrl: url,
     verified:
       best.score.score >= EMAIL_VERIFY_THRESHOLD && best.score.foundInPage,
-    reasoning: `Found on page (${best.score.reasons.join(", ")})`,
+    reasoning: `Found on page (${best.score.reasons.join(", ")})${
+      ccEmails.length ? `; cc=${ccEmails.join(",")}` : ""
+    }`,
     stage: "directory",
   };
 }
@@ -162,11 +174,21 @@ async function resolveFromHits(
       homepageUrl: hit.url,
     });
     if (best) {
+      const ccEmails = pickCcRecipients({
+        primaryEmail: best.email,
+        pageText: text,
+        name,
+        university,
+        max: 2,
+      });
       return {
         primaryEmail: best.email,
+        ccEmails,
         sourceUrl: hit.url,
         verified: true,
-        reasoning: `${stage}: ${best.score.reasons.join(", ")} @ ${hit.url}`,
+        reasoning: `${stage}: ${best.score.reasons.join(", ")} @ ${hit.url}${
+          ccEmails.length ? `; cc=${ccEmails.join(",")}` : ""
+        }`,
         stage,
       };
     }

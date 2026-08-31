@@ -34,6 +34,12 @@ import { buildOutreachLetter } from "@/services/outreach_letter";
 import { emailConfidenceTier } from "@/services/email_confidence";
 import { scoreEmailQuality } from "@/services/email_quality_scorer";
 import { getOutreachLearnings } from "@/services/outreach_learning";
+import {
+  formatCcForStorage,
+  parseProfessorCc,
+  parseSpecialInstructions,
+  polishOutreachLetter,
+} from "@/services/outreach_recipients";
 
 /** Recover subject/body from LLM output even when JSON is slightly broken. */
 function parseLlmDraftResponse(
@@ -779,6 +785,21 @@ ${brief.slice(0, 1800)}`;
     });
   }
 
+  const ccList = parseProfessorCc(professor.ccEmails);
+  const special = parseSpecialInstructions(professor.specialInstructions);
+  const polished = polishOutreachLetter({
+    subject,
+    body,
+    greeting,
+    studentName,
+    researchInterests: interests,
+    special,
+    ccEmails: ccList,
+    willAttach: attachCv,
+  });
+  subject = polished.subject;
+  body = polished.body;
+
   const prepared = prepareEmailBodies(body, {
     willAttach: attachCv,
     docType,
@@ -798,6 +819,7 @@ ${brief.slice(0, 1800)}`;
       body: prepared.body,
       htmlBody: prepared.htmlBody,
       recipientEmail: professor.email,
+      ccEmails: formatCcForStorage(ccList),
       status: "pending",
       providerUsed,
       isFallback,
