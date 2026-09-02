@@ -23,10 +23,15 @@ import {
   searchPersonalRedundant,
 } from "./faculty_search";
 import { pickCcRecipients } from "./outreach_recipients";
+import {
+  extractMentorshipEvidence,
+  type MentorshipEvidence,
+} from "./mentorship_evidence";
 
 export interface ResolveEmailResult {
   primaryEmail: string;
   ccEmails?: string[];
+  mentorshipEvidence?: MentorshipEvidence[];
   sourceUrl: string | null;
   verified: boolean;
   reasoning: string;
@@ -126,9 +131,11 @@ function tryExtractFromPage(
     university,
     max: 2,
   });
+  const mentorshipEvidence = extractMentorshipEvidence(pageText, url);
   return {
     primaryEmail: best.email,
     ccEmails,
+    mentorshipEvidence,
     sourceUrl: url,
     verified:
       best.score.score >= EMAIL_VERIFY_THRESHOLD && best.score.foundInPage,
@@ -181,9 +188,11 @@ async function resolveFromHits(
         university,
         max: 2,
       });
+      const mentorshipEvidence = extractMentorshipEvidence(text, hit.url);
       return {
         primaryEmail: best.email,
         ccEmails,
+        mentorshipEvidence,
         sourceUrl: hit.url,
         verified: true,
         reasoning: `${stage}: ${best.score.reasons.join(", ")} @ ${hit.url}${

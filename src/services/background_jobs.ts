@@ -14,6 +14,11 @@ import {
   formatCcForStorage,
   normalizeCcList,
 } from "@/services/outreach_recipients";
+import {
+  mergeMentorshipEvidence,
+  parseProfessorMentorshipEvidence,
+  serializeMentorshipEvidence,
+} from "@/services/mentorship_evidence";
 
 export type JobLogEntry = { at: string; msg: string };
 
@@ -242,6 +247,11 @@ export async function tickEmailReverifyJob(userId: string, batchSize = 3) {
         applied.email,
         3
       );
+      const mentorshipMerged = mergeMentorshipEvidence(
+        parseProfessorMentorshipEvidence(p.mentorshipEvidence),
+        applied.mentorshipEvidence || []
+      );
+      const mentorshipJson = serializeMentorshipEvidence(mentorshipMerged);
 
       await prisma.professor.update({
         where: { id: p.id },
@@ -251,6 +261,7 @@ export async function tickEmailReverifyJob(userId: string, batchSize = 3) {
           verificationNotes: applied.verificationNotes,
           homepageUrl: applied.sourceUrl || p.homepageUrl,
           ccEmails: toJsonArray(ccMerged),
+          mentorshipEvidence: mentorshipJson,
         },
       });
 

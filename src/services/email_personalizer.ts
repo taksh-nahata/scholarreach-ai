@@ -40,6 +40,7 @@ import {
   parseSpecialInstructions,
   polishOutreachLetter,
 } from "@/services/outreach_recipients";
+import { parseProfessorMentorshipEvidence } from "@/services/mentorship_evidence";
 
 /** Recover subject/body from LLM output even when JSON is slightly broken. */
 function parseLlmDraftResponse(
@@ -116,6 +117,7 @@ type ProfessorLike = {
   title?: string | null;
   department?: string | null;
   locationMode?: string | null;
+  mentorshipEvidence?: string | null;
 };
 
 function lastName(full: string) {
@@ -288,6 +290,9 @@ async function fallbackEmail(opts: {
       : null;
 
   const paperCtx = paper ? await fetchPaperContext(paper) : null;
+  const mentorshipEvidence = parseProfessorMentorshipEvidence(
+    professor.mentorshipEvidence
+  );
 
   const letter = buildOutreachLetter({
     greeting,
@@ -307,6 +312,7 @@ async function fallbackEmail(opts: {
     docType,
     extraLabels,
     maxProjects: role === "full_professor" ? 2 : 3,
+    mentorshipEvidence,
   });
 
   return { subject: letter.subject, body: letter.body, paperCtx };

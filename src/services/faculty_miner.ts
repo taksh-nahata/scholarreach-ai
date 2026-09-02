@@ -5,6 +5,11 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeDedupeKey, parseJsonArray, toJsonArray } from "@/lib/utils";
 import { normalizeCcList } from "@/services/outreach_recipients";
+import {
+  mergeMentorshipEvidence,
+  serializeMentorshipEvidence,
+  mentorshipMatchBonus,
+} from "@/services/mentorship_evidence";
 import { mapPool } from "@/lib/async_pool";
 import { universitiesForRegions, topicsFromProfile } from "@/lib/university_pools";
 import { getProfileBundle } from "@/services/profile_service";
@@ -149,6 +154,7 @@ export async function importFacultyLead(opts: {
       locationMode: opts.locationMode,
       university: opts.university,
     },
+    mentorshipEvidence: resolved.mentorshipEvidence,
   });
   if (score < opts.minScore) {
     return { skipped: true as const, reason: "low_fit", matchScore: score };
@@ -162,6 +168,13 @@ export async function importFacultyLead(opts: {
     verifiedEmail,
     3
   );
+
+  const mentorshipMerged = mergeMentorshipEvidence(
+    [],
+    resolved.mentorshipEvidence || []
+  );
+  const mentorshipJson = serializeMentorshipEvidence(mentorshipMerged);
+  const mentorshipNote = mentorshipMatchBonus(mentorshipMerged);
 
   const created = await prisma.professor.create({
     data: {
@@ -181,7 +194,10 @@ export async function importFacultyLead(opts: {
       emailVerified,
       verificationNotes: resolved.reasoning,
       matchScore: score,
-      matchReason: opts.fitNote || reason || null,
+      matchReason: mentorshipNote.reason
+        ? `${opts.fitNote || reason || ""}${opts.fitNote || reason ? " · " : ""}${mentorshipNote.reason}`.trim()
+        : opts.fitNote || reason || null,
+      mentorshipEvidence: mentorshipJson,
       dedupeKey,
     },
   });

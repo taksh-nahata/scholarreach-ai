@@ -11,6 +11,10 @@ import {
 } from "@/services/offer_section";
 import { formalizeAvailabilityHours } from "@/services/email_acceptance_format";
 import { credentialPhrase } from "@/services/doc_type";
+import {
+  mentorshipEmailLine,
+  type MentorshipEvidence,
+} from "@/services/mentorship_evidence";
 
 export type PaperDomain =
   | "social_science"
@@ -710,6 +714,7 @@ export function buildOutreachLetter(opts: {
   docType?: string | null;
   extraLabels?: string[];
   maxProjects?: number;
+  mentorshipEvidence?: MentorshipEvidence[] | null;
 }): { subject: string; body: string } {
   const coreBlob = paperCoreBlob(opts.paper, opts.paperTitle);
   const fullBlob = paperBlob(opts.paper, opts.researchFocus, opts.paperTitle);
@@ -772,6 +777,13 @@ export function buildOutreachLetter(opts: {
 
   const bridge = curiosityBridge(domain, blob, variant);
 
+  const mentorshipLine = mentorshipEmailLine({
+    evidence: opts.mentorshipEvidence || [],
+    researchFocus: opts.researchFocus,
+    paperTitle,
+    labName: opts.labName,
+  });
+
   const pivot = remotePivot({
     studentLocation: opts.studentLocation,
     physical,
@@ -820,6 +832,7 @@ export function buildOutreachLetter(opts: {
     "",
     paperPara,
     "",
+    ...(mentorshipLine ? [mentorshipLine, ""] : []),
     bridge,
     "",
     offerIntro,

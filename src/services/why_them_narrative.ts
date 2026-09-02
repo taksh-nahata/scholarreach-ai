@@ -3,6 +3,10 @@
  */
 import type { PaperContext } from "@/services/paper_context";
 import {
+  mentorshipEmailLine,
+  type MentorshipEvidence,
+} from "@/services/mentorship_evidence";
+import {
   buildOfferSection,
   parseOfferProjects,
   type OfferProject,
@@ -98,6 +102,7 @@ export function buildWhyThemStory(opts: {
   paper: PaperContext | null;
   projectsJson?: string | null;
   brief?: string | null;
+  mentorshipEvidence?: MentorshipEvidence[] | null;
 }): string {
   const labBit = opts.labName ? ` (${opts.labName})` : "";
   const focus =
@@ -124,29 +129,45 @@ export function buildWhyThemStory(opts: {
 
   const ask = `I am writing to ask about contributing as a research student / volunteer with your group at ${opts.university}${labBit}.`;
 
+  const mentorshipLine = mentorshipEmailLine({
+    evidence: opts.mentorshipEvidence || [],
+    researchFocus: opts.researchFocus,
+    paperTitle,
+    labName: opts.labName,
+  });
+
   if (paperTitle && opts.paper) {
     return [
       ask,
+      mentorshipLine,
       `I reached out specifically because of your paper "${paperTitle}".`,
       opts.paper.insight,
       helpAngle(opts.paper, focus, top),
-    ].join(" ");
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
 
   if (paperTitle) {
     return [
       ask,
+      mentorshipLine,
       `I reached out specifically because of your paper "${paperTitle}".`,
       `The problem it names - and how it frames ${focus} - is what made me want to contribute, not a quick skim of the lab homepage.`,
       helpAngle(null, focus, top),
-    ].join(" ");
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
 
   return [
     ask,
+    mentorshipLine,
     `I am reaching out because of your work on ${focus}.`,
     helpAngle(null, focus, top),
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /** Offer section that ranks projects against the paper, not only the lab blurbs. */

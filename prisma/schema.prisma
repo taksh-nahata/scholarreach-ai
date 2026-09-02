@@ -204,6 +204,7 @@ model Professor {
   specialInstructions String?
   matchScore         Int?
   matchReason        String?
+  mentorshipEvidence String?  // JSON: lab-page HS/UG researcher signals
   dedupeKey          String   // normalized name|university
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

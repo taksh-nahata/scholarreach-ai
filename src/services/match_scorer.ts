@@ -2,11 +2,17 @@
  * Lightweight fit score between a student profile and a mined professor.
  * Keyword/phrase overlap + paper/focus bonuses (no extra API calls).
  */
+import {
+  mentorshipMatchBonus,
+  type MentorshipEvidence,
+} from "@/services/mentorship_evidence";
+
 export type MatchInput = {
   researchInterests?: string | null;
   skillsText?: string;
   workModePref?: string | null;
   location?: string | null;
+  mentorshipEvidence?: MentorshipEvidence[] | null;
   professor: {
     researchFocus?: string | null;
     recentPaper?: string | null;
@@ -118,12 +124,18 @@ export function scoreProfessorMatch(input: MatchInput): {
     score += 5;
   }
 
-  score = Math.max(5, Math.min(98, score));
-  const reason = matched.length
-    ? `Overlap on: ${matched.join(", ")}${paperBlob ? " · paper noted" : ""}`
-    : "Weak topical overlap — review before drafting.";
+  const mentorship = mentorshipMatchBonus(input.mentorshipEvidence || []);
+  score += mentorship.bonus;
 
-  return { score, reason };
+  score = Math.max(5, Math.min(98, score));
+  const reasonParts = [
+    matched.length
+      ? `Overlap on: ${matched.join(", ")}${paperBlob ? " · paper noted" : ""}`
+      : "Weak topical overlap — review before drafting.",
+  ];
+  if (mentorship.reason) reasonParts.push(mentorship.reason);
+
+  return { score, reason: reasonParts.join(" · ") };
 }
 
 export function skillsToText(skills: unknown): string {

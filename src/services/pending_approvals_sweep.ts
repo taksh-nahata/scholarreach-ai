@@ -13,6 +13,11 @@ import {
   formatCcForStorage,
   normalizeCcList,
 } from "@/services/outreach_recipients";
+import {
+  mergeMentorshipEvidence,
+  parseProfessorMentorshipEvidence,
+  serializeMentorshipEvidence,
+} from "@/services/mentorship_evidence";
 
 export type SweepResult = {
   emailChecks: Array<{
@@ -58,10 +63,16 @@ async function reverifyProfessorForDraft(
     email,
     3
   );
+  const mentorshipMerged = mergeMentorshipEvidence(
+    parseProfessorMentorshipEvidence(professor.mentorshipEvidence),
+    applied.mentorshipEvidence || []
+  );
+  const mentorshipJson = serializeMentorshipEvidence(mentorshipMerged);
   const changed =
     (professor.email || null) !== email ||
     professor.emailVerified !== emailVerified ||
-    toJsonArray(ccMerged) !== (professor.ccEmails || "[]");
+    toJsonArray(ccMerged) !== (professor.ccEmails || "[]") ||
+    (mentorshipJson || null) !== (professor.mentorshipEvidence || null);
 
   await prisma.professor.update({
     where: { id: professor.id },
@@ -71,6 +82,7 @@ async function reverifyProfessorForDraft(
       verificationNotes: applied.verificationNotes,
       homepageUrl: applied.sourceUrl || professor.homepageUrl,
       ccEmails: toJsonArray(ccMerged),
+      mentorshipEvidence: mentorshipJson,
     },
   });
 

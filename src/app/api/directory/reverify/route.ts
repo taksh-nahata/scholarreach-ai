@@ -12,6 +12,11 @@ import {
   formatCcForStorage,
   normalizeCcList,
 } from "@/services/outreach_recipients";
+import {
+  mergeMentorshipEvidence,
+  parseProfessorMentorshipEvidence,
+  serializeMentorshipEvidence,
+} from "@/services/mentorship_evidence";
 
 export const maxDuration = 60;
 
@@ -82,6 +87,11 @@ export async function POST(req: NextRequest) {
         applied.email,
         3
       );
+      const mentorshipMerged = mergeMentorshipEvidence(
+        parseProfessorMentorshipEvidence(p.mentorshipEvidence),
+        applied.mentorshipEvidence || []
+      );
+      const mentorshipJson = serializeMentorshipEvidence(mentorshipMerged);
 
       await prisma.professor.update({
         where: { id: p.id },
@@ -91,6 +101,7 @@ export async function POST(req: NextRequest) {
           verificationNotes: applied.verificationNotes,
           homepageUrl: applied.sourceUrl || p.homepageUrl,
           ccEmails: toJsonArray(ccMerged),
+          mentorshipEvidence: mentorshipJson,
         },
       });
 

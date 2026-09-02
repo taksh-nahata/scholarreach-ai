@@ -9,6 +9,11 @@ import {
 import { isJunkFacultyEmail } from "@/services/faculty_email_verifier";
 import { loadPageTextRedundant } from "@/services/faculty_search";
 import { pickCcRecipients } from "@/services/outreach_recipients";
+import {
+  extractMentorshipEvidence,
+  mergeMentorshipEvidence,
+  type MentorshipEvidence,
+} from "@/services/mentorship_evidence";
 
 export type ApplyEmailResult = {
   email: string | null;
@@ -16,32 +21,40 @@ export type ApplyEmailResult = {
   verificationNotes: string;
   sourceUrl?: string | null;
   ccEmails?: string[];
+  mentorshipEvidence?: MentorshipEvidence[];
 };
 
-async function harvestCcFromHomepage(opts: {
+async function harvestLabPageSignals(opts: {
   userId: string;
   name: string;
   university: string;
   email: string;
   homepageUrl?: string | null;
-}): Promise<string[]> {
-  if (!opts.homepageUrl || !opts.email) return [];
+}): Promise<{ ccEmails: string[]; mentorshipEvidence: MentorshipEvidence[] }> {
+  if (!opts.homepageUrl || !opts.email) {
+    return { ccEmails: [], mentorshipEvidence: [] };
+  }
   try {
     const text = await loadPageTextRedundant(opts.userId, {
       title: opts.name,
       url: opts.homepageUrl,
       snippet: "",
     });
-    if (!text || text.length < 40) return [];
-    return pickCcRecipients({
-      primaryEmail: opts.email,
-      pageText: text,
-      name: opts.name,
-      university: opts.university,
-      max: 2,
-    });
+    if (!text || text.length < 40) {
+      return { ccEmails: [], mentorshipEvidence: [] };
+    }
+    return {
+      ccEmails: pickCcRecipients({
+        primaryEmail: opts.email,
+        pageText: text,
+        name: opts.name,
+        university: opts.university,
+        max: 2,
+      }),
+      mentorshipEvidence: extractMentorshipEvidence(text, opts.homepageUrl),
+    };
   } catch {
-    return [];
+    return { ccEmails: [], mentorshipEvidence: [] };
   }
 }
 
@@ -65,21 +78,22 @@ export async function applyFacultyEmailCheck(opts: {
     });
     if (audited.keep && audited.verified) {
       const trustedEmail = audited.email || existing;
-      const ccEmails = trustedEmail
-        ? await harvestCcFromHomepage({
+      const labSignals = trustedEmail
+        ? await harvestLabPageSignals({
             userId: opts.userId,
             name: opts.name,
             university: opts.university,
             email: trustedEmail,
             homepageUrl: opts.homepageUrl,
           })
-        : [];
+        : { ccEmails: [], mentorshipEvidence: [] };
       return {
         email: trustedEmail,
         emailVerified: true,
         verificationNotes: `Trusted stored email (${audited.notes})`,
         sourceUrl: opts.homepageUrl || null,
-        ccEmails,
+        ccEmails: labSignals.ccEmails,
+        mentorshipEvidence: labSignals.mentorshipEvidence,
       };
     }
     // Strong enough to keep; only live-resolve if we still want evidence
@@ -108,22 +122,29 @@ export async function applyFacultyEmailCheck(opts: {
       });
       if (resolved.verified && resolved.primaryEmail) {
         const email = resolved.primaryEmail.toLowerCase();
+        const pageUrl = resolved.sourceUrl || opts.homepageUrl;
+        const labSignals = await harvestLabPageSignals({
+          userId: opts.userId,
+          name: opts.name,
+          university: opts.university,
+          email,
+          homepageUrl: pageUrl,
+        });
         const ccEmails =
           resolved.ccEmails?.length
             ? resolved.ccEmails
-            : await harvestCcFromHomepage({
-                userId: opts.userId,
-                name: opts.name,
-                university: opts.university,
-                email,
-                homepageUrl: resolved.sourceUrl || opts.homepageUrl,
-              });
+            : labSignals.ccEmails;
+        const mentorshipEvidence = mergeMentorshipEvidence(
+          resolved.mentorshipEvidence || [],
+          labSignals.mentorshipEvidence
+        );
         return {
           email,
           emailVerified: true,
           verificationNotes: resolved.reasoning,
           sourceUrl: resolved.sourceUrl,
           ccEmails,
+          mentorshipEvidence,
         };
       }
       return {
