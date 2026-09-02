@@ -15,7 +15,7 @@
     "demo:export": "tsx scripts/export-demo-data.ts",
     "drip:dry-run": "tsx scripts/drip_dry_run.ts",
     "build:gh-pages": "node scripts/build-gh-pages.cjs",
-    "test": "tsx scripts/drip_dry_run.ts && tsx tests/faculty_email_scoring.test.ts && tsx tests/reliability_helpers.test.ts && tsx tests/outreach_letter.test.ts && tsx tests/outreach_recipients.test.ts && tsx tests/mentorship_evidence.test.ts && tsx tests/reply_parser.test.ts",
+    "test": "tsx scripts/drip_dry_run.ts && tsx tests/faculty_email_scoring.test.ts && tsx tests/reliability_helpers.test.ts && tsx tests/outreach_letter.test.ts && tsx tests/outreach_recipients.test.ts && tsx tests/mentorship_evidence.test.ts && tsx tests/outreach_pipeline_integration.test.ts && tsx tests/reply_parser.test.ts",
     "test:email": "tsx tests/faculty_email_scoring.test.ts",
     "test:letter": "tsx tests/outreach_letter.test.ts",
     "test:reliability": "tsx tests/reliability_helpers.test.ts"
