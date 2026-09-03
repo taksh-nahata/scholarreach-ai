@@ -5,43 +5,35 @@
   "crons": [
     {
       "path": "/api/cron/outreach",
-      "schedule": "15 23 * * 1,2,3"
+      "schedule": "0 15 * * 2,3,4"
     },
     {
       "path": "/api/cron/outreach",
-      "schedule": "45 2 * * 2,3,4"
-    },
-    {
-      "path": "/api/cron/outreach",
-      "schedule": "15 7 * * 2,3,4"
-    },
-    {
-      "path": "/api/cron/outreach",
-      "schedule": "15 12 * * 2,3,4"
-    },
-    {
-      "path": "/api/cron/outreach",
-      "schedule": "40 12 * * 2,3,4"
-    },
-    {
-      "path": "/api/cron/outreach",
-      "schedule": "15 13 * * 2,3,4"
-    },
-    {
-      "path": "/api/cron/outreach",
-      "schedule": "15 15 * * 2,3,4"
+      "schedule": "20 15 * * 2,3,4"
     },
     {
       "path": "/api/cron/outreach",
       "schedule": "40 15 * * 2,3,4"
     },
     {
+      "path": "/api/cron/outreach",
+      "schedule": "0 16 * * 2,3,4"
+    },
+    {
+      "path": "/api/cron/outreach",
+      "schedule": "30 16 * * 2,3,4"
+    },
+    {
+      "path": "/api/cron/outreach",
+      "schedule": "0 17 * * 2,3,4"
+    },
+    {
       "path": "/api/cron/followups",
-      "schedule": "0 17 * * *"
+      "schedule": "30 17 * * *"
     },
     {
       "path": "/api/cron/autopilot",
-      "schedule": "0 16 * * *"
+      "schedule": "0 18 * * *"
     }
   ]
 }

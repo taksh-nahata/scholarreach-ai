@@ -662,6 +662,9 @@ export async function tickDraftGenerateJob(userId: string, batchSize = 1) {
   const { generatePersonalizedDraft } = await import(
     "@/services/email_personalizer"
   );
+  const { getProfessorOutreachBlockReason } = await import(
+    "@/services/outreach_guard"
+  );
   const slice = ids.slice(cursor, cursor + batchSize);
   let ok = 0;
   let fail = 0;
@@ -674,6 +677,11 @@ export async function tickDraftGenerateJob(userId: string, batchSize = 1) {
     });
     if (p) names.push(p.name);
     try {
+      const blocked = await getProfessorOutreachBlockReason(userId, professorId);
+      if (blocked) {
+        fail += 1;
+        continue;
+      }
       await generatePersonalizedDraft({ userId, professorId });
       ok += 1;
     } catch {

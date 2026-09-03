@@ -28,12 +28,15 @@ export async function GET(req: NextRequest) {
 
   const jobTicks = await tickAllRunningJobs(15);
   const autopilot = await runDailyAutopilot(5, { tickRounds: 12 });
-  const before = await assessOutreachHealth();  // Prefer in-window sends; self-heal rolls overdue out-of-window items
+  const before = await assessOutreachHealth();
+  // Recover stuck rows + dedupe; flush only when a US window is open
   const heal = await selfHealOutreach({ limit: 12 });
   let drip = heal.results;
-  // Extra flush only when some professor TZ is currently in window
-  if (dripDispatcher.isLiveSend() && dripDispatcher.isAnyAcademicWindow()) {
+  if (dripDispatcher.isLiveSend()) {
     const batchLimit = Number(process.env.CRON_DRIP_BATCH || 10);
+    // Always attempt the batch — per-professor canDispatchNow / shouldRollMissedSlot
+    // decide send vs wait vs roll. Gating only on isAnyAcademicWindow skipped
+    // legitimate sends when health TZ checks drifted.
     drip = await dripDispatcher.processDueBatch(batchLimit);
   }
   const after = await assessOutreachHealth();

@@ -7,6 +7,7 @@ import {
   isGoogleOAuthConfigured,
   isUserGmailConnected,
 } from "@/services/gmail_oauth_service";
+import { dedupeScheduledOutreach } from "@/services/outreach_guard";
 
 export type HealthIssue = {
   code: string;
@@ -136,6 +137,80 @@ export async function selfHealOutreach(opts?: {
   const actions: string[] = [];
   const results: unknown[] = [];
 
+  // Recover rows stuck in "sending" after a crashed claim (older than 15 min)
+  const stuckCutoff = new Date(Date.now() - 15 * 60_000);
+  const stuckWhere = {
+    status: "sending",
+    kind: "outreach",
+    updatedAt: { lte: stuckCutoff },
+    ...(opts?.userId ? { userId: opts.userId } : {}),
+  };
+  const stuck = await prisma.scheduledEmail.findMany({
+    where: stuckWhere,
+    take: 30,
+  });
+  let recoveredStuck = 0;
+  for (const row of stuck) {
+    const alreadySent = row.professorId
+      ? await prisma.sentHistory.findFirst({
+          where: {
+            userId: row.userId,
+            professorId: row.professorId,
+            kind: "outreach",
+          },
+          select: { id: true },
+        })
+      : null;
+    if (alreadySent) {
+      await prisma.scheduledEmail.update({
+        where: { id: row.id },
+        data: {
+          status: "cancelled",
+          lastError: "Cancelled — already sent (stuck sending recovery)",
+        },
+      });
+    } else {
+      const next = dripDispatcher.getNextAcademicWindowSlot(
+        new Date(),
+        row.university
+      );
+      await prisma.scheduledEmail.update({
+        where: { id: row.id },
+        data: {
+          status: "scheduled",
+          scheduledIso: next,
+          scheduledTime: dripDispatcher.formatSlot(next, row.university),
+          lastError: "Recovered from stuck sending",
+        },
+      });
+    }
+    recoveredStuck += 1;
+  }
+  if (recoveredStuck) actions.push(`recovered_stuck_sending_${recoveredStuck}`);
+
+  if (opts?.userId) {
+    const deduped = await dedupeScheduledOutreach(opts.userId);
+    if (deduped.cancelled > 0) {
+      actions.push(`deduped_queue_${deduped.cancelled}`);
+    }
+  } else {
+    const users = await prisma.scheduledEmail.findMany({
+      where: {
+        kind: "outreach",
+        status: { in: ["scheduled", "sending"] },
+        professorId: { not: null },
+      },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    let cancelled = 0;
+    for (const row of users) {
+      const deduped = await dedupeScheduledOutreach(row.userId);
+      cancelled += deduped.cancelled;
+    }
+    if (cancelled > 0) actions.push(`deduped_queue_${cancelled}`);
+  }
+
   const shouldFlush =
     health.overdue > 0 &&
     !health.dryRun &&
@@ -161,12 +236,8 @@ export async function selfHealOutreach(opts?: {
     }
     actions.push(`flushed_${results.length}`);
   } else if (health.overdue > 0 && !health.inWindow && !opts?.force) {
-    // Roll missed slots to next professor-local Tue–Thu 8 AM (no late send)
-    const rolled = await dripDispatcher.processDueBatch(opts?.limit || 20, {
-      force: false,
-    });
-    results.push(...rolled);
-    actions.push(`rolled_missed_windows_${rolled.length}`);
+    // Professors in other US timezones may still be in their local morning window.
+    actions.push("deferred_roll_outside_global_window");
   }
 
   // Clear stale lastError on items that are still scheduled but Gmail is now connected

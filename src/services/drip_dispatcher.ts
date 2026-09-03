@@ -1,7 +1,7 @@
 /**
  * ScholarReach AI — Academic High-Speed Drip Dispatcher
- * Window: Tue–Thu 8:00–9:00 AM in the PROFESSOR's university timezone.
- * 5–9s jitter. Cap 500/day with rollover.
+ * Window: Tue–Thu 8:00–9:00 AM professor-local (core); grace dispatch until 10:45.
+ * 5–9s jitter between sends. Cap 500/day with rollover.
  */
 import { prisma } from "@/lib/prisma";
 import { sendMailForUser } from "./mail_sender";
@@ -95,7 +95,6 @@ function zonedDate(
 }
 
 export class EnterpriseDripDispatcher {
-  isProcessing = false;
   minDelayMs = 5 * 1000;
   maxDelayMs = 9 * 1000;
   dailyCap = parseInt(process.env.DAILY_SEND_CAP || "500", 10);
@@ -103,6 +102,8 @@ export class EnterpriseDripDispatcher {
   /** Fallback TZ for daily counters / unknown universities */
   timeZone = defaultDripTimezone();
   private watcher: NodeJS.Timeout | null = null;
+  /** Professor-local grace ends at 10:45 (same Tue–Thu morning). */
+  private readonly graceEndMin = 10 * 60 + 45;
 
   isLiveSend() {
     // Re-read each call so env flips apply without stale module state
@@ -153,24 +154,54 @@ export class EnterpriseDripDispatcher {
     const isTueThu = p.weekday === 2 || p.weekday === 3 || p.weekday === 4;
     if (!isTueThu) return false;
     const currentMin = p.hour * 60 + p.minute;
-    return currentMin >= 8 * 60 && currentMin < 10 * 60 + 45;
+    return currentMin >= 8 * 60 && currentMin < this.graceEndMin;
   }
 
-  /** True if any common academic TZ is currently in the send/grace window. */
+  /** True if professor-local grace for the scheduled day has passed (safe to roll). */
+  shouldRollMissedSlot(
+    now: Date,
+    scheduledIso: Date,
+    university?: string | null
+  ): boolean {
+    const tz = this.resolveTimezone(university);
+    if (this.canDispatchNow(now, university)) return false;
+
+    const sched = zonedParts(scheduledIso, tz);
+    const cur = zonedParts(now, tz);
+    const schedKey = sched.year * 10000 + sched.month * 100 + sched.day;
+    const curKey = cur.year * 10000 + cur.month * 100 + cur.day;
+
+    if (schedKey > curKey) return false;
+    if (schedKey < curKey) return true;
+
+    const isTueThu =
+      cur.weekday === 2 || cur.weekday === 3 || cur.weekday === 4;
+    if (!isTueThu) return true;
+
+    const curMin = cur.hour * 60 + cur.minute;
+    return curMin >= this.graceEndMin;
+  }
+
+  jitterMs() {
+    return (
+      Math.floor(Math.random() * (this.maxDelayMs - this.minDelayMs)) +
+      this.minDelayMs
+    );
+  }
+
+  /**
+   * True if a US/Canada academic morning window is open.
+   * Do NOT include Asia/Europe here — that made "in window" true at night
+   * Pacific and caused premature rolls / confusing health status.
+   */
   isAnyAcademicWindow(now = new Date()) {
     const zones = [
       "America/Los_Angeles",
       "America/Denver",
+      "America/Phoenix",
       "America/Chicago",
       "America/New_York",
       "America/Toronto",
-      "Europe/London",
-      "Europe/Berlin",
-      "Asia/Jerusalem",
-      "Asia/Kolkata",
-      "Asia/Shanghai",
-      "Asia/Tokyo",
-      "Australia/Sydney",
     ];
     return zones.some((tz) => this.canDispatchNow(now, tz));
   }
@@ -181,12 +212,12 @@ export class EnterpriseDripDispatcher {
   ) {
     const tz = this.resolveTimezone(university);
     const base = zonedParts(fromDate, tz);
-    // If still before today's window ends and today is Tue–Thu, use today
-    {
-      const todayMin = base.hour * 60 + base.minute;
-      const isTueThu =
-        base.weekday === 2 || base.weekday === 3 || base.weekday === 4;
-      if (isTueThu && todayMin < 8 * 60) {
+    const todayMin = base.hour * 60 + base.minute;
+    const isTueThu =
+      base.weekday === 2 || base.weekday === 3 || base.weekday === 4;
+
+    if (isTueThu) {
+      if (todayMin < 8 * 60) {
         return zonedDate(
           base.year,
           base.month,
@@ -195,6 +226,11 @@ export class EnterpriseDripDispatcher {
           Math.floor(Math.random() * 20),
           tz
         );
+      }
+      // Same-morning grace: retry soon instead of skipping to tomorrow
+      if (todayMin >= 8 * 60 && todayMin < this.graceEndMin) {
+        const jitterMin = 1 + Math.floor(Math.random() * 3);
+        return new Date(fromDate.getTime() + jitterMin * 60_000);
       }
     }
 
@@ -252,11 +288,9 @@ export class EnterpriseDripDispatcher {
 
   async processNextQueueItem(
     userId?: string,
-    opts?: { force?: boolean; itemId?: string }
+    opts?: { force?: boolean; itemId?: string; excludeUserIds?: string[] }
   ) {
     const force = !!opts?.force;
-    if (this.isProcessing) return { skipped: true, reason: "busy" };
-    this.isProcessing = true;
 
     try {
       const now = new Date();
@@ -277,17 +311,20 @@ export class EnterpriseDripDispatcher {
         const where: {
           status: string;
           scheduledIso: { lte: Date };
-          userId?: string;
+          userId?: string | { notIn: string[] };
         } = {
           status: "scheduled",
           scheduledIso: { lte: now },
         };
         if (userId) where.userId = userId;
+        else if (opts?.excludeUserIds?.length) {
+          where.userId = { notIn: opts.excludeUserIds };
+        }
 
         const candidates = await prisma.scheduledEmail.findMany({
           where,
           orderBy: { scheduledIso: "asc" },
-          take: 40,
+          take: 120,
           include: { professor: true },
         });
 
@@ -303,10 +340,16 @@ export class EnterpriseDripDispatcher {
         if (!item && force) {
           item = candidates[0] || null;
         } else if (!item && candidates[0]) {
-          // Out of window — roll the oldest overdue without attempting send
           const roll = candidates[0];
           const university =
             roll.university || roll.professor?.university || null;
+          if (!this.shouldRollMissedSlot(now, roll.scheduledIso, university)) {
+            return {
+              skipped: true,
+              reason: "waiting_for_professor_window",
+              waitingId: roll.id,
+            };
+          }
           const nextSlot = this.getNextAcademicWindowSlot(now, university);
           await prisma.scheduledEmail.update({
             where: { id: roll.id },
@@ -669,8 +712,8 @@ export class EnterpriseDripDispatcher {
         cooldownMs: jitterMs,
         id: item.id,
       };
-    } finally {
-      this.isProcessing = false;
+    } catch (err) {
+      throw err;
     }
   }
 
@@ -678,19 +721,30 @@ export class EnterpriseDripDispatcher {
   async processDueBatch(limit = 8, opts?: { force?: boolean }) {
     const results = [];
     const capped = Math.min(limit, 12);
+    const blockedUsers = new Set<string>();
     for (let i = 0; i < capped; i++) {
-      const r = await this.processNextQueueItem(undefined, opts);
+      const r = await this.processNextQueueItem(undefined, {
+        ...opts,
+        excludeUserIds: blockedUsers.size ? [...blockedUsers] : undefined,
+      });
       results.push(r);
       if (r && "skipped" in r) {
+        if (r.reason === "gmail_auth_broken" && "id" in r && r.id) {
+          const row = await prisma.scheduledEmail.findUnique({
+            where: { id: r.id as string },
+            select: { userId: true },
+          });
+          if (row?.userId) blockedUsers.add(row.userId);
+          continue;
+        }
         if (
           r.reason === "empty_queue" ||
-          r.reason === "busy" ||
-          r.reason === "gmail_auth_broken"
+          r.reason === "waiting_for_professor_window"
         ) {
           break;
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, this.jitterMs()));
     }
     return results;
   }

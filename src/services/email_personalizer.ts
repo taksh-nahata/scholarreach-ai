@@ -3,6 +3,7 @@ import { getProfileBundle } from "@/services/profile_service";
 import { tryConsumeApi } from "@/services/api_budget";
 import { freeFirstMode } from "@/lib/free_first_mode";
 import { applyAgentGateToDraft } from "@/services/pending_approvals_sweep";
+import { getProfessorOutreachBlockReason } from "@/services/outreach_guard";
 import {
   hasUploadedCv,
   prepareEmailBodies,
@@ -449,6 +450,41 @@ export async function generatePersonalizedDraft(opts: {
     where: { id: opts.professorId, userId: opts.userId },
   });
   if (!professor) throw new Error("Professor not found");
+
+  const blockReason = await getProfessorOutreachBlockReason(
+    opts.userId,
+    opts.professorId
+  );
+  if (blockReason === "already_contacted") {
+    throw new Error(
+      `Outreach was already sent to ${professor.name}. Use follow-ups instead.`
+    );
+  }
+  if (blockReason === "already_queued") {
+    throw new Error(
+      `${professor.name} already has an email in the send queue.`
+    );
+  }
+  if (blockReason === "draft_exists") {
+    const existing = await prisma.draft.findFirst({
+      where: {
+        userId: opts.userId,
+        professorId: opts.professorId,
+        status: { in: ["pending", "pending_review", "scheduled", "approved"] },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (existing) {
+      return {
+        draft: existing,
+        auto: null,
+        hasCv: false,
+        formatScore: 0,
+        reused: true,
+      };
+    }
+  }
+
   if (!professor.email || !professor.emailVerified) {
     throw new Error(
       `No verified email for ${professor.name}. Re-check emails in Directory first.`
@@ -852,15 +888,25 @@ export async function generateDraftsForProfessors(
   const created = [];
   const skipped: Array<{ professorId: string; reason: string }> = [];
   for (const id of professorIds.slice(0, 20)) {
-    const existing = await prisma.draft.findFirst({
-      where: {
-        userId,
-        professorId: id,
-        status: { in: ["pending", "pending_review"] },
-      },
-    });
-    if (existing) {
-      created.push(existing);
+    const blockReason = await getProfessorOutreachBlockReason(userId, id);
+    if (blockReason) {
+      if (blockReason === "draft_exists") {
+        const existing = await prisma.draft.findFirst({
+          where: {
+            userId,
+            professorId: id,
+            status: {
+              in: ["pending", "pending_review", "scheduled", "approved"],
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+        });
+        if (existing) {
+          created.push(existing);
+          continue;
+        }
+      }
+      skipped.push({ professorId: id, reason: blockReason });
       continue;
     }
     const professor = await prisma.professor.findFirst({

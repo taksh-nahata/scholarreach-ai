@@ -13,6 +13,7 @@ import {
 } from "@/services/background_jobs";
 import { isUserGmailConnected } from "@/services/gmail_oauth_service";
 import { isPlatformMailConfigured } from "@/services/platform_mail";
+import { listBlockedProfessorIds } from "@/services/outreach_guard";
 
 export type AutopilotStepResult = {
   userId: string;
@@ -151,18 +152,8 @@ export async function runAutopilotForUser(
     sent.map((r) => r.professorId).filter(Boolean) as string[]
   );
 
-  const pendingDraftRows = await prisma.draft.findMany({
-    where: {
-      userId,
-      status: { in: [...PENDING_APPROVAL_STATUSES] },
-      professorId: { not: null },
-    },
-    select: { professorId: true },
-    distinct: ["professorId"],
-  });
-  const pendingDraft = new Set(
-    pendingDraftRows.map((r) => r.professorId).filter(Boolean) as string[]
-  );
+  const blocked = await listBlockedProfessorIds(userId);
+  for (const id of contacted) blocked.add(id);
 
   const minFit = settings.autopilotMinFit ?? 50;
   const mineWhenBelow = settings.autopilotMineWhenBelow ?? 25;
@@ -173,8 +164,7 @@ export async function runAutopilotForUser(
     (p) =>
       p.emailVerified &&
       p.email &&
-      !contacted.has(p.id) &&
-      !pendingDraft.has(p.id)
+      !blocked.has(p.id)
   );
 
   const needVerify = professors

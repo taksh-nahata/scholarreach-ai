@@ -9,6 +9,9 @@ import {
   strictDeliverabilityEnabled,
 } from "@/services/deliverability_guard";
 import { emailConfidenceTier } from "@/services/email_confidence";
+import {
+  assertProfessorOutreachAllowed,
+} from "@/services/outreach_guard";
 
 export async function approveDraftToQueue(opts: {
   userId: string;
@@ -22,6 +25,42 @@ export async function approveDraftToQueue(opts: {
     include: { professor: true },
   });
   if (!draft) throw new Error("Draft not found");
+  if (!draft.professorId) {
+    throw new Error("Draft must be linked to a professor.");
+  }
+
+  const existingQueue = await prisma.scheduledEmail.findFirst({
+    where: {
+      userId: opts.userId,
+      professorId: draft.professorId,
+      kind: "outreach",
+      status: { in: ["scheduled", "sending"] },
+    },
+    orderBy: { scheduledIso: "asc" },
+  });
+  if (existingQueue) {
+    if (draft.status !== "scheduled") {
+      await prisma.draft.update({
+        where: { id: draft.id },
+        data: {
+          status: "scheduled",
+          reviewStatus:
+            opts.via === "agent" ? "agent_approved" : "human_approved",
+          reviewNotes: "Linked to existing queue entry (duplicate prevented).",
+        },
+      });
+    }
+    return {
+      scheduledId: existingQueue.id,
+      scheduledTime: existingQueue.scheduledTime,
+      status: "scheduled" as const,
+      duplicatePrevented: true,
+    };
+  }
+
+  await assertProfessorOutreachAllowed(opts.userId, draft.professorId, {
+    excludeDraftId: draft.id,
+  });
 
   const toEmail = draft.recipientEmail || draft.professor?.email || "";
   if (!toEmail) throw new Error("No recipient email on draft");
@@ -72,7 +111,7 @@ export async function approveDraftToQueue(opts: {
   }
 
   const university = draft.professor?.university || null;
-  const slot = dripDispatcher.isAcademicWindow(new Date(), university)
+  const slot = dripDispatcher.canDispatchNow(new Date(), university)
     ? new Date()
     : dripDispatcher.getNextAcademicWindowSlot(new Date(), university);
 
